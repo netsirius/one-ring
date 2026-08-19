@@ -34,7 +34,13 @@ export default function App() {
   const [issues, setIssues] = useState([]);
   const [trashItems, setTrashItems] = useState([]);
 
-  const [activeTab, setActiveTab] = useState("vault");
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("tab") || "vault";
+    } catch {
+      return "vault";
+    }
+  });
   const [viewMode, setViewMode] = useState("grid"); // "grid" | "table"
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);

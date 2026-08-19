@@ -19,15 +19,32 @@ export const api = {
     if (isTauri && invoke) {
       return await invoke("get_vault_items");
     }
-    // Fallback simulation
     return [
       {
         id: "frontend-design",
         name: "frontend-design",
         extension_type: "skill",
-        description: "Guidance for distinctive, intentional visual design when building new UI.",
+        description: "Distinctive, production-grade visual design and UI heuristics for building modern web apps.",
         path: "~/.one-ring/vault/skills/frontend-design",
-        tags: ["skill", "frontend", "design"],
+        tags: ["skill", "frontend", "design", "ui"],
+        is_directory: true,
+        has_doc: true,
+        global_status: {
+          claude: "linked",
+          gemini: "linked",
+          agents: "linked",
+          cursor: "unlinked",
+          codex: "unlinked"
+        },
+        supported_agents: ["claude", "gemini", "agents", "cursor", "codex"]
+      },
+      {
+        id: "ui-ux-pro-max",
+        name: "ui-ux-pro-max",
+        extension_type: "skill",
+        description: "Design intelligence engine with 50 styles, 21 palettes, font pairings, and responsive patterns.",
+        path: "~/.one-ring/vault/skills/ui-ux-pro-max",
+        tags: ["skill", "ui-ux", "design-system"],
         is_directory: true,
         has_doc: true,
         global_status: {
@@ -43,7 +60,7 @@ export const api = {
         id: "chrome-devtools-plugin",
         name: "chrome-devtools-plugin",
         extension_type: "plugin",
-        description: "Comprehensive Chrome DevTools debugging, inspection, and memory profiling suite.",
+        description: "Comprehensive Chrome DevTools debugging, network inspection, and memory leak profiling suite.",
         path: "~/.one-ring/vault/plugins/chrome-devtools-plugin",
         tags: ["plugin", "devtools", "chrome"],
         is_directory: true,
@@ -51,11 +68,29 @@ export const api = {
         global_status: {
           claude: "unlinked",
           gemini: "linked",
-          agents: "unlinked",
+          agents: "linked",
           cursor: "incompatible",
           codex: "incompatible"
         },
         supported_agents: ["claude", "gemini", "agents"]
+      },
+      {
+        id: "ponytail-audit",
+        name: "ponytail-audit",
+        extension_type: "skill",
+        description: "Deep codebase auditor for over-engineering, dead code, and speculative abstractions.",
+        path: "~/.one-ring/vault/skills/ponytail-audit",
+        tags: ["skill", "audit", "refactoring"],
+        is_directory: true,
+        has_doc: true,
+        global_status: {
+          claude: "linked",
+          gemini: "linked",
+          agents: "linked",
+          cursor: "unlinked",
+          codex: "unlinked"
+        },
+        supported_agents: ["claude", "gemini", "agents", "cursor", "codex"]
       }
     ];
   },
