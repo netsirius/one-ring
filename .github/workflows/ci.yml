@@ -1,0 +1,37 @@
+name: CI Test & Verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Build & Test (Rust + React)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Run React & Frontend Tests
+        run: npm test
+
+      - name: Verify Frontend Production Build
+        run: npm run build
+
+      - name: Run Rust Backend Tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
