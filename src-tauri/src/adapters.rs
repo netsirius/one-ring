@@ -159,3 +159,44 @@ pub fn resolve_project_target_dir(project_path: &Path, target: &AgentTarget, ext
         .get(ext_type.as_str())
         .map(|rel| project_path.join(rel))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_known_targets_count_and_ids() {
+        let targets = get_known_targets();
+        assert_eq!(targets.len(), 5);
+
+        let ids: Vec<String> = targets.iter().map(|t| t.id.clone()).collect();
+        assert!(ids.contains(&"claude".to_string()));
+        assert!(ids.contains(&"gemini".to_string()));
+        assert!(ids.contains(&"agents".to_string()));
+        assert!(ids.contains(&"cursor".to_string()));
+        assert!(ids.contains(&"codex".to_string()));
+    }
+
+    #[test]
+    fn test_get_target_by_id() {
+        let claude = get_target_by_id("claude");
+        assert!(claude.is_some());
+        assert_eq!(claude.unwrap().name, "Claude Code");
+
+        let unknown = get_target_by_id("nonexistent");
+        assert!(unknown.is_none());
+    }
+
+    #[test]
+    fn test_resolve_project_target_dir() {
+        let agents_target = get_target_by_id("agents").unwrap();
+        let project = PathBuf::from("/tmp/my-project");
+
+        let skill_dir = resolve_project_target_dir(&project, &agents_target, &ExtensionType::Skill);
+        assert_eq!(skill_dir, Some(PathBuf::from("/tmp/my-project/.agents/skills")));
+
+        let plugin_dir = resolve_project_target_dir(&project, &agents_target, &ExtensionType::Plugin);
+        assert_eq!(plugin_dir, Some(PathBuf::from("/tmp/my-project/.agents/plugins")));
+    }
+}
+

@@ -321,4 +321,30 @@ mod tests {
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
+
+    #[test]
+    fn test_broken_symlink_and_unmanaged_status() {
+        let temp_dir = std::env::temp_dir().join(format!("one_ring_test_broken_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let vault_item = temp_dir.join("vault_item");
+        fs::create_dir_all(&vault_item).unwrap();
+        let target_dest = temp_dir.join("dest_agent").join("linked_item");
+
+        create_link(&vault_item, &target_dest).unwrap();
+        assert_eq!(check_link_status(&vault_item, &target_dest), LinkStatus::Linked);
+
+        // Delete source vault item to make symlink broken
+        fs::remove_dir_all(&vault_item).unwrap();
+        assert_eq!(check_link_status(&vault_item, &target_dest), LinkStatus::Broken);
+
+        // Create a real directory at another path -> UnmanagedCopy
+        let unmanaged_path = temp_dir.join("unmanaged_dir");
+        fs::create_dir_all(&unmanaged_path).unwrap();
+        assert_eq!(check_link_status(&vault_item, &unmanaged_path), LinkStatus::UnmanagedCopy);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }
+

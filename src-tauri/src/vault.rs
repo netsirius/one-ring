@@ -311,3 +311,36 @@ pub fn import_url_into_vault(url: &str, ext_type: &ExtensionType, custom_name: O
 
     Ok(name_slug)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+
+    #[test]
+    fn test_parse_item_metadata() {
+        let temp_dir = std::env::temp_dir().join(format!("one_ring_vault_meta_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let item_dir = temp_dir.join("test-skill");
+        fs::create_dir_all(&item_dir).unwrap();
+        let mut skill_md = File::create(item_dir.join("SKILL.md")).unwrap();
+        writeln!(
+            skill_md,
+            "---\nname: Test Skill\ndescription: A test description for this skill\ntags: [test, rust]\n---\n# Body Content"
+        )
+        .unwrap();
+
+        let (name, desc, tags, has_doc) = parse_item_metadata(&item_dir, &ExtensionType::Skill);
+        assert_eq!(name, "Test Skill");
+        assert_eq!(desc, "A test description for this skill");
+        assert!(tags.contains(&"test".to_string()));
+        assert!(tags.contains(&"rust".to_string()));
+        assert!(has_doc);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+}
+

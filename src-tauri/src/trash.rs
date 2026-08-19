@@ -247,3 +247,34 @@ pub fn empty_all_trash() -> Result<usize, String> {
 
     Ok(count)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+
+    #[test]
+    fn test_copy_dir_all_and_move_safely() {
+        let temp_dir = std::env::temp_dir().join(format!("one_ring_trash_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let src_dir = temp_dir.join("src_folder");
+        fs::create_dir_all(&src_dir).unwrap();
+        let mut file1 = File::create(src_dir.join("file.txt")).unwrap();
+        writeln!(file1, "sample content").unwrap();
+
+        let dst_dir = temp_dir.join("dst_folder");
+        copy_dir_all(&src_dir, &dst_dir).unwrap();
+        assert!(dst_dir.join("file.txt").exists());
+
+        let moved_dir = temp_dir.join("moved_folder");
+        move_path_safely(&dst_dir, &moved_dir).unwrap();
+        assert!(!dst_dir.exists());
+        assert!(moved_dir.join("file.txt").exists());
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+}
+

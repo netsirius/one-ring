@@ -148,3 +148,44 @@ pub struct SystemStats {
     pub doctor_unmanaged_count: usize,
     pub trash_count: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extension_type_folders() {
+        assert_eq!(ExtensionType::Skill.folder_name(), "skills");
+        assert_eq!(ExtensionType::Agent.folder_name(), "agents");
+        assert_eq!(ExtensionType::Plugin.folder_name(), "plugins");
+        assert_eq!(ExtensionType::Command.folder_name(), "commands");
+        assert_eq!(ExtensionType::Rule.folder_name(), "rules");
+
+        assert_eq!(ExtensionType::from_folder("skills"), Some(ExtensionType::Skill));
+        assert_eq!(ExtensionType::from_folder("plugins"), Some(ExtensionType::Plugin));
+        assert_eq!(ExtensionType::from_folder("agents"), Some(ExtensionType::Agent));
+        assert_eq!(ExtensionType::from_folder("commands"), Some(ExtensionType::Command));
+        assert_eq!(ExtensionType::from_folder("rules"), Some(ExtensionType::Rule));
+        assert_eq!(ExtensionType::from_folder("unknown"), None);
+    }
+
+    #[test]
+    fn test_extension_type_serialization() {
+        let json = serde_json::to_string(&ExtensionType::Skill).unwrap();
+        assert_eq!(json, "\"skill\"");
+
+        let parsed: ExtensionType = serde_json::from_str("\"plugin\"").unwrap();
+        assert_eq!(parsed, ExtensionType::Plugin);
+    }
+
+    #[test]
+    fn test_link_status_serde() {
+        let status = LinkStatus::Linked;
+        let json = serde_json::to_string(&status).unwrap();
+        assert_eq!(json, "\"linked\"");
+
+        let parsed: LinkStatus = serde_json::from_str("\"unmanaged_copy\"").unwrap();
+        assert_eq!(parsed, LinkStatus::UnmanagedCopy);
+    }
+}
+

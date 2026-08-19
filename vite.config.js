@@ -11,4 +11,8 @@ export default defineConfig({
     host: true,
   },
   envPrefix: ["VITE_", "TAURI_ENV_*"],
+  test: {
+    environment: "jsdom",
+    globals: true,
+  },
 });
