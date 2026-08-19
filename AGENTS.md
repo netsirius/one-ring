@@ -35,27 +35,55 @@ All UI development follows the **xAI-inspired engineered cosmic design language*
 ### Frontend (`src/`)
 - `src/App.jsx`: Main application orchestrator managing global state, active tabs, and toast feedback.
 - `src/index.css`: Global design tokens derived from `DESIGN.md`.
-- `src/components/Header.jsx`: Minimalist header with status pills, `⌘K` search bar, and actions.
-- `src/components/ViewNav.jsx`: Segmented pill navigation between Vault, Global Switchboard, Project Workspaces, and Symlink Doctor.
+- `src/components/Header.jsx`: Minimalist header with brand identity, global `⌘K` search bar, theme toggle, and CTA.
+- `src/components/ViewNav.jsx`: Segmented pill navigation between Vault, Global Switchboard, Workspaces, Doctor, and Trash.
 - `src/components/VaultView.jsx`: Vault library with Grid & Dense Table views, type filter chips, and interactive agent switches.
 - `src/components/GlobalSwitchboard.jsx`: Matrix switchboard for cross-agent compatibility and bulk symlink management.
-- `src/components/ProjectMatrixView.jsx`: Workspace selector and local `.agents/` matrix management.
+- `src/components/ProjectMatrixView.jsx`: Workspace selector and local `.agents/` matrix management with 1-click linking and trash.
 - `src/components/DoctorView.jsx`: Diagnostic health dashboard for repairing broken symlinks and adopting unmanaged copies.
+- `src/components/TrashView.jsx`: Safe 2-stage quarantine and staging system with 1-click restore and permanent disk purge.
 - `src/components/SkillDrawer.jsx`: Slide-over documentation and raw source code inspector.
-- `src/components/AddSkillModal.jsx`: Modal for URL imports, custom extension authoring, and preset templates.
-- `src/services/api.js`: Tauri IPC bridge with browser fallback simulation.
+- `src/components/AddSkillModal.jsx`: Modal for URL / NPX command imports (`npx skills add`), custom authoring, and preset templates.
+- `src/services/api.js`: Tauri IPC bridge with rich browser fallback simulation for development.
 
 ### Backend (`src-tauri/`)
-- `src-tauri/src/models.rs`: Core Rust types (`ExtensionType`, `VaultItem`, `AgentTarget`, `ProjectWorkspace`, `DoctorIssue`, `SystemStats`).
-- `src-tauri/src/vault.rs`: Vault storage management under `~/.one-ring/vault/`.
+- `src-tauri/src/models.rs`: Core Rust types (`ExtensionType`, `VaultItem`, `AgentTarget`, `ProjectWorkspace`, `DoctorIssue`, `TrashItem`, `SystemStats`).
+- `src-tauri/src/vault.rs`: Vault storage management under `~/.one-ring/vault/`, metadata frontmatter extraction, and NPX command parsing.
 - `src-tauri/src/symlink.rs`: Cross-platform OS-level symlink creation, removal, and health validation.
-- `src-tauri/src/adapters.rs`: Agent directory discovery and configuration adapters.
+- `src-tauri/src/adapters.rs`: Agent directory discovery and configuration adapters for all 5 targets (Claude, Gemini, Agents, Cursor, Codex).
 - `src-tauri/src/projects.rs`: Workspace project registry persistence (`~/.one-ring/projects.json`).
-- `src-tauri/src/doctor.rs`: Deep diagnostics scanner.
+- `src-tauri/src/trash.rs`: Quarantine and staging subsystem (`~/.one-ring/trash/manifest.json`).
+
+---
+
+## Testing & Quality Assurance Rules
+
+All code contributions must adhere to strict testing standards:
+
+### 1. Mandatory Test Suites
+- **Backend Tests (Rust)**:
+  ```bash
+  cd src-tauri && cargo test
+  ```
+  Every new IPC handler, target resolution helper, symlink state check, metadata parser, and quarantine operation must have unit tests inside `src-tauri/src/`.
+- **Frontend Tests (React & IPC Mock)**:
+  ```bash
+  npm test
+  ```
+  All views (`VaultView`, `GlobalSwitchboard`, `ProjectMatrixView`, `DoctorView`, `TrashView`) and the API service bridge must have unit tests (`*.test.jsx`, `*.test.js`) powered by Vitest and `@testing-library/react`.
+
+### 2. Pre-Commit Verification Gate
+Before committing or pushing any change, execute the complete verification triad:
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml && npm test && npm run build
+```
+No PR or commit may be pushed with failing tests or broken production bundles.
 
 ---
 
 ## Development Workflow
 - **Desktop Dev Server**: `npm run desktop` (Runs `tauri dev`)
 - **Web Preview**: `npm run dev` (Runs Vite at `http://localhost:5173`)
+- **Run Frontend Tests**: `npm test`
+- **Run Backend Tests**: `cargo test --manifest-path src-tauri/Cargo.toml`
 - **Build Verification**: `npm run build`

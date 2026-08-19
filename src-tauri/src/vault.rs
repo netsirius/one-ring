@@ -62,7 +62,9 @@ pub fn list_vault_items() -> Result<Vec<VaultItem>, String> {
                     if is_supported {
                         supported_agents.push(target.id.clone());
 
-                        if let Some(target_global_dir_str) = target.type_global_dirs.get(ext_type.as_str()) {
+                        if let Some(target_global_dir_str) =
+                            target.type_global_dirs.get(ext_type.as_str())
+                        {
                             let target_dest = PathBuf::from(target_global_dir_str).join(&file_name);
                             let status = check_link_status(&path, &target_dest);
                             global_status.insert(target.id.clone(), status);
@@ -76,7 +78,11 @@ pub fn list_vault_items() -> Result<Vec<VaultItem>, String> {
 
                 items.push(VaultItem {
                     id: file_name.clone(),
-                    name: if name.is_empty() { file_name.clone() } else { name },
+                    name: if name.is_empty() {
+                        file_name.clone()
+                    } else {
+                        name
+                    },
                     extension_type: ext_type.clone(),
                     description,
                     path: path.to_string_lossy().to_string(),
@@ -95,7 +101,10 @@ pub fn list_vault_items() -> Result<Vec<VaultItem>, String> {
     Ok(items)
 }
 
-pub fn parse_item_metadata(item_path: &Path, ext_type: &ExtensionType) -> (String, String, Vec<String>, bool) {
+pub fn parse_item_metadata(
+    item_path: &Path,
+    ext_type: &ExtensionType,
+) -> (String, String, Vec<String>, bool) {
     let mut name = String::new();
     let mut description = String::new();
     let mut tags = vec![ext_type.as_str().to_string()];
@@ -120,7 +129,10 @@ pub fn parse_item_metadata(item_path: &Path, ext_type: &ExtensionType) -> (Strin
     // Case 2: Document with SKILL.md or AGENT.md or RULE.md or markdown file
     let doc_file = if item_path.is_dir() {
         let candidates = ["SKILL.md", "AGENT.md", "RULE.md", "README.md"];
-        candidates.iter().map(|c| item_path.join(c)).find(|p| p.exists())
+        candidates
+            .iter()
+            .map(|c| item_path.join(c))
+            .find(|p| p.exists())
     } else {
         Some(item_path.to_path_buf())
     };
@@ -138,7 +150,8 @@ pub fn parse_item_metadata(item_path: &Path, ext_type: &ExtensionType) -> (Strin
                         }
                     } else if let Some(val) = trimmed.strip_prefix("description:") {
                         if description.is_empty() {
-                            description = val.trim().trim_matches('"').trim_matches('\'').to_string();
+                            description =
+                                val.trim().trim_matches('"').trim_matches('\'').to_string();
                         }
                     } else if let Some(val) = trimmed.strip_prefix("tags:") {
                         let tags_str = val.trim().trim_matches('[').trim_matches(']');
@@ -166,7 +179,11 @@ pub fn parse_item_metadata(item_path: &Path, ext_type: &ExtensionType) -> (Strin
     }
 
     if name.is_empty() {
-        name = item_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        name = item_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
     }
 
     if description.is_empty() {
@@ -186,20 +203,31 @@ pub fn get_item_raw_content(ext_type: &ExtensionType, item_id: &str) -> Result<S
     }
 
     let file_to_read = if item_path.is_dir() {
-        let candidates = ["SKILL.md", "AGENT.md", "RULE.md", "README.md", "plugin.json"];
-        let found = candidates.iter().map(|c| item_path.join(c)).find(|p| p.exists());
+        let candidates = [
+            "SKILL.md",
+            "AGENT.md",
+            "RULE.md",
+            "README.md",
+            "plugin.json",
+        ];
+        let found = candidates
+            .iter()
+            .map(|c| item_path.join(c))
+            .find(|p| p.exists());
         match found {
             Some(p) => p,
             None => {
-                return Ok(format!("# {}\n\nDirectory contains files without a root documentation file.", item_id));
+                return Ok(format!(
+                    "# {}\n\nDirectory contains files without a root documentation file.",
+                    item_id
+                ));
             }
         }
     } else {
         item_path
     };
 
-    fs::read_to_string(&file_to_read)
-        .map_err(|e| format!("Failed to read item content: {}", e))
+    fs::read_to_string(&file_to_read).map_err(|e| format!("Failed to read item content: {}", e))
 }
 
 pub fn create_new_vault_item(
@@ -215,11 +243,13 @@ pub fn create_new_vault_item(
     let item_dir = vault_dir.join(&safe_name);
 
     if item_dir.exists() {
-        return Err(format!("An item named '{}' already exists in the vault.", safe_name));
+        return Err(format!(
+            "An item named '{}' already exists in the vault.",
+            safe_name
+        ));
     }
 
-    fs::create_dir_all(&item_dir)
-        .map_err(|e| format!("Failed to create item directory: {}", e))?;
+    fs::create_dir_all(&item_dir).map_err(|e| format!("Failed to create item directory: {}", e))?;
 
     let filename = match ext_type {
         ExtensionType::Skill => "SKILL.md",
@@ -269,11 +299,9 @@ pub fn delete_item_from_vault(ext_type: &ExtensionType, item_id: &str) -> Result
     }
 
     if item_path.is_dir() {
-        fs::remove_dir_all(&item_path)
-            .map_err(|e| format!("Failed to delete directory: {}", e))?;
+        fs::remove_dir_all(&item_path).map_err(|e| format!("Failed to delete directory: {}", e))?;
     } else {
-        fs::remove_file(&item_path)
-            .map_err(|e| format!("Failed to delete file: {}", e))?;
+        fs::remove_file(&item_path).map_err(|e| format!("Failed to delete file: {}", e))?;
     }
 
     Ok(())
@@ -339,10 +367,20 @@ pub fn parse_import_input(input: &str) -> (String, Option<String>, Option<String
     while i < tokens.len() {
         let token = tokens[i];
         if (token == "--skill" || token == "-s") && i + 1 < tokens.len() {
-            sub_skill = Some(tokens[i + 1].trim_matches('"').trim_matches('\'').to_string());
+            sub_skill = Some(
+                tokens[i + 1]
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string(),
+            );
             i += 2;
         } else if (token == "--name" || token == "-n") && i + 1 < tokens.len() {
-            custom_name = Some(tokens[i + 1].trim_matches('"').trim_matches('\'').to_string());
+            custom_name = Some(
+                tokens[i + 1]
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string(),
+            );
             i += 2;
         } else if repo_target.is_empty() && !token.starts_with('-') {
             repo_target = token.trim_matches('"').trim_matches('\'');
@@ -367,7 +405,11 @@ pub fn parse_import_input(input: &str) -> (String, Option<String>, Option<String
     }
 
     // Normalize shorthand owner/repo to https://github.com/owner/repo
-    if !final_repo.is_empty() && !final_repo.starts_with("http://") && !final_repo.starts_with("https://") && !final_repo.starts_with("git@") {
+    if !final_repo.is_empty()
+        && !final_repo.starts_with("http://")
+        && !final_repo.starts_with("https://")
+        && !final_repo.starts_with("git@")
+    {
         if final_repo.contains('/') && !final_repo.contains(' ') {
             final_repo = format!("https://github.com/{}", final_repo);
         }
@@ -376,7 +418,11 @@ pub fn parse_import_input(input: &str) -> (String, Option<String>, Option<String
     (final_repo, sub_skill, custom_name)
 }
 
-pub fn import_url_into_vault(input: &str, ext_type: &ExtensionType, custom_name_opt: Option<String>) -> Result<String, String> {
+pub fn import_url_into_vault(
+    input: &str,
+    ext_type: &ExtensionType,
+    custom_name_opt: Option<String>,
+) -> Result<String, String> {
     let (repo_url, sub_skill_opt, parsed_name) = parse_import_input(input);
     if repo_url.is_empty() {
         return Err("No repository URL or command found in input.".to_string());
@@ -390,7 +436,11 @@ pub fn import_url_into_vault(input: &str, ext_type: &ExtensionType, custom_name_
     } else if let Some(ref s) = sub_skill_opt {
         s.clone()
     } else {
-        repo_url.split('/').last().unwrap_or("imported-item").replace(".git", "")
+        repo_url
+            .split('/')
+            .last()
+            .unwrap_or("imported-item")
+            .replace(".git", "")
     };
 
     let target_dir = vault_dir.join(&name_slug);
@@ -399,11 +449,21 @@ pub fn import_url_into_vault(input: &str, ext_type: &ExtensionType, custom_name_
     }
 
     // Clone into isolated temporary directory
-    let temp_dir = std::env::temp_dir().join(format!("one_ring_import_{}_{}", std::process::id(), name_slug));
+    let temp_dir = std::env::temp_dir().join(format!(
+        "one_ring_import_{}_{}",
+        std::process::id(),
+        name_slug
+    ));
     let _ = fs::remove_dir_all(&temp_dir);
 
     let output = Command::new("git")
-        .args(["clone", "--depth", "1", &repo_url, &temp_dir.to_string_lossy()])
+        .args([
+            "clone",
+            "--depth",
+            "1",
+            &repo_url,
+            &temp_dir.to_string_lossy(),
+        ])
         .output()
         .map_err(|e| format!("Failed to execute git clone: {}", e))?;
 
@@ -444,7 +504,10 @@ pub fn import_url_into_vault(input: &str, ext_type: &ExtensionType, custom_name_
                 p
             } else {
                 let _ = fs::remove_dir_all(&temp_dir);
-                return Err(format!("Could not find sub-skill '{}' in repository '{}'", skill_name, repo_url));
+                return Err(format!(
+                    "Could not find sub-skill '{}' in repository '{}'",
+                    skill_name, repo_url
+                ));
             }
         }
     } else {
@@ -471,7 +534,8 @@ mod tests {
 
     #[test]
     fn test_parse_item_metadata() {
-        let temp_dir = std::env::temp_dir().join(format!("one_ring_vault_meta_{}", std::process::id()));
+        let temp_dir =
+            std::env::temp_dir().join(format!("one_ring_vault_meta_{}", std::process::id()));
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
 
@@ -497,18 +561,23 @@ mod tests {
     #[test]
     fn test_parse_import_input_variations() {
         // Full npx command with --skill
-        let (repo1, sub1, name1) = parse_import_input("npx skills add https://github.com/vercel-labs/skills --skill find-skills");
+        let (repo1, sub1, name1) = parse_import_input(
+            "npx skills add https://github.com/vercel-labs/skills --skill find-skills",
+        );
         assert_eq!(repo1, "https://github.com/vercel-labs/skills");
         assert_eq!(sub1, Some("find-skills".to_string()));
         assert_eq!(name1, None);
 
         // Short command with -s
-        let (repo2, sub2, _) = parse_import_input("npx skills add vercel-labs/skills -s find-skills");
+        let (repo2, sub2, _) =
+            parse_import_input("npx skills add vercel-labs/skills -s find-skills");
         assert_eq!(repo2, "https://github.com/vercel-labs/skills");
         assert_eq!(sub2, Some("find-skills".to_string()));
 
         // GitHub tree URL
-        let (repo3, sub3, _) = parse_import_input("https://github.com/vercel-labs/skills/tree/main/skills/find-skills");
+        let (repo3, sub3, _) = parse_import_input(
+            "https://github.com/vercel-labs/skills/tree/main/skills/find-skills",
+        );
         assert_eq!(repo3, "https://github.com/vercel-labs/skills");
         assert_eq!(sub3, Some("find-skills".to_string()));
 
@@ -518,5 +587,3 @@ mod tests {
         assert_eq!(sub4, None);
     }
 }
-
-
