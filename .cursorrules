@@ -1,0 +1,4 @@
+# Cursor AI Rules
+
+Please read and adhere to [AGENTS.md](./AGENTS.md) and [DESIGN.md](./DESIGN.md) for all code, styling, and testing standards.
+Always run `cargo test --manifest-path src-tauri/Cargo.toml && npm test && npm run build` before finishing tasks.
