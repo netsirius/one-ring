@@ -152,6 +152,12 @@ export const api = {
     return enable ? "linked" : "unlinked";
   },
 
+  async removeItemFromProject(projectPath, extType, itemId, agentId = "agents") {
+    if (isTauri && invoke) {
+      return await invoke("remove_item_from_project", { projectPath, extType, itemId, agentId });
+    }
+  },
+
   async getItemContent(itemId, extType = "skill") {
     if (isTauri && invoke) {
       return await invoke("get_item_content", { itemId, extType });

@@ -37,6 +37,7 @@ export default function ProjectMatrixView({
   const [newPathInput, setNewPathInput] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [isLinkVaultModalOpen, setIsLinkVaultModalOpen] = useState(false);
+  const [scope, setScope] = useState("active"); // "active" | "all"
   const [filterType, setFilterType] = useState("all");
   const [matrixViewMode, setMatrixViewMode] = useState("grid"); // "grid" | "table"
 
@@ -56,7 +57,28 @@ export default function ProjectMatrixView({
 
   const categories = ["all", "skill", "plugin", "agent", "command", "rule"];
 
+  const getItemStatusInProject = (item) => {
+    const projectItemStatus = (
+      currentProject?.items || currentProject?.skills || []
+    ).find(
+      (s) =>
+        (s.item_id === item.id || s.id === item.id) &&
+        (s.extension_type === item.extension_type || !s.extension_type)
+    );
+    const status = projectItemStatus?.status || "unlinked";
+    const isLinked = status === "linked";
+    const isUnmanaged = status === "unmanaged_copy";
+    const isActive = isLinked || isUnmanaged;
+    return { status, isLinked, isUnmanaged, isActive };
+  };
+
+  const activeProjectLinksCount = currentProject
+    ? allVaultItems.filter((item) => getItemStatusInProject(item).isActive).length
+    : 0;
+
   const filteredItems = allVaultItems.filter((item) => {
+    const { isActive } = getItemStatusInProject(item);
+    if (scope === "active" && !isActive) return false;
     if (filterType !== "all" && item.extension_type !== filterType) return false;
 
     if (searchQuery && searchQuery.trim()) {
@@ -91,12 +113,6 @@ export default function ProjectMatrixView({
     setNewPathInput("");
     setIsAdding(false);
   };
-
-  const activeProjectLinksCount = currentProject
-    ? (currentProject.items || currentProject.skills || []).filter(
-        (s) => s.status === "linked" || s.status === "unmanaged_copy"
-      ).length
-    : 0;
 
   // Batch toggle all visible extensions in this project
   const handleBatchToggleProject = async (enable) => {
@@ -447,7 +463,7 @@ export default function ProjectMatrixView({
         </div>
       )}
 
-      {/* Controls Bar: Category Chips + View Switcher + Batch Toggles */}
+      {/* Controls Bar: Scope Selector + Category Chips + View Switcher + Batch Toggles */}
       <div
         style={{
           display: "flex",
@@ -458,36 +474,62 @@ export default function ProjectMatrixView({
           flexWrap: "wrap",
         }}
       >
-        {/* Category Filter Chips */}
-        <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "2px" }}>
-          {categories.map((cat) => {
-            const count =
-              cat === "all"
-                ? allVaultItems.length
-                : allVaultItems.filter((i) => i.extension_type === cat).length;
-            const isActive = filterType === cat;
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          {/* Scope Selector: Active in Workspace vs All Vault */}
+          <div style={{ display: "flex", gap: "4px", background: "var(--bg-card)", padding: "3px", borderRadius: "var(--radius-pill)", border: "1px solid var(--border-subtle)" }}>
+            <button
+              className={`nav-tab-item ${scope === "active" ? "active" : ""}`}
+              style={{ padding: "3px 10px", fontSize: "0.72rem" }}
+              onClick={() => setScope("active")}
+            >
+              <span>Active in Project</span>
+              <span style={{ fontSize: "0.68rem", fontFamily: "var(--font-mono)", marginLeft: "4px" }}>
+                ({activeProjectLinksCount})
+              </span>
+            </button>
+            <button
+              className={`nav-tab-item ${scope === "all" ? "active" : ""}`}
+              style={{ padding: "3px 10px", fontSize: "0.72rem" }}
+              onClick={() => setScope("all")}
+            >
+              <span>All Vault</span>
+              <span style={{ fontSize: "0.68rem", fontFamily: "var(--font-mono)", marginLeft: "4px" }}>
+                ({allVaultItems.length})
+              </span>
+            </button>
+          </div>
 
-            return (
-              <button
-                key={cat}
-                className={`tag-badge ${isActive ? "active" : ""}`}
-                style={{
-                  background: isActive ? "var(--bg-badge)" : "transparent",
-                  color: isActive ? "var(--text-primary)" : "var(--text-muted)",
-                  borderColor: isActive ? "var(--text-primary)" : "var(--border-pill)",
-                  cursor: "pointer",
-                  padding: "4px 12px",
-                  fontSize: "0.74rem",
-                }}
-                onClick={() => setFilterType(cat)}
-              >
-                <span>{cat.toUpperCase()}</span>
-                <strong style={{ marginLeft: "4px", fontFamily: "var(--font-mono)" }}>
-                  {count}
-                </strong>
-              </button>
-            );
-          })}
+          {/* Category Filter Chips */}
+          <div style={{ display: "flex", gap: "4px", overflowX: "auto", paddingBottom: "2px" }}>
+            {categories.map((cat) => {
+              const count =
+                cat === "all"
+                  ? (scope === "active" ? activeProjectLinksCount : allVaultItems.length)
+                  : allVaultItems.filter((i) => i.extension_type === cat && (scope === "all" || getItemStatusInProject(i).isActive)).length;
+              const isActive = filterType === cat;
+
+              return (
+                <button
+                  key={cat}
+                  className={`tag-badge ${isActive ? "active" : ""}`}
+                  style={{
+                    background: isActive ? "var(--bg-badge)" : "transparent",
+                    color: isActive ? "var(--text-primary)" : "var(--text-muted)",
+                    borderColor: isActive ? "var(--text-primary)" : "var(--border-pill)",
+                    cursor: "pointer",
+                    padding: "3px 10px",
+                    fontSize: "0.72rem",
+                  }}
+                  onClick={() => setFilterType(cat)}
+                >
+                  <span>{cat.toUpperCase()}</span>
+                  <strong style={{ marginLeft: "4px", fontFamily: "var(--font-mono)" }}>
+                    {count}
+                  </strong>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* View Switcher & Batch Actions */}
@@ -557,6 +599,20 @@ export default function ProjectMatrixView({
           <p style={{ fontSize: "0.84rem", color: "var(--text-secondary)", maxWidth: "420px", margin: "0 auto" }}>
             You haven't added any skills, plugins, or rules to your central Vault yet. Add extensions in the <strong>Vault Library</strong> tab first to link them to this project.
           </p>
+        </div>
+      ) : scope === "active" && activeProjectLinksCount === 0 ? (
+        <div className="empty-state">
+          <FolderGit2 size={44} color="var(--text-muted)" />
+          <h3 style={{ marginTop: "14px", marginBottom: "6px", fontWeight: 500, fontSize: "1rem", letterSpacing: "-0.02em" }}>
+            No Extensions Active in this Workspace
+          </h3>
+          <p style={{ fontSize: "0.84rem", color: "var(--text-secondary)", maxWidth: "440px", margin: "0 auto 16px" }}>
+            <strong>{currentProject.name}</strong> doesn't have any skills or plugins linked yet. Link extensions from your Vault to activate them inside <code>.agents/</code>.
+          </p>
+          <button className="btn-primary" onClick={() => setIsLinkVaultModalOpen(true)}>
+            <FolderPlus size={13} />
+            <span>Link Extension from Vault</span>
+          </button>
         </div>
       ) : filteredItems.length === 0 ? (
         <div className="empty-state">
