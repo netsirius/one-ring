@@ -279,14 +279,118 @@ pub fn delete_item_from_vault(ext_type: &ExtensionType, item_id: &str) -> Result
     Ok(())
 }
 
-pub fn import_url_into_vault(url: &str, ext_type: &ExtensionType, custom_name: Option<String>) -> Result<String, String> {
+fn copy_dir_all_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+    for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let ty = entry.file_type().map_err(|e| e.to_string())?;
+        if ty.is_dir() {
+            copy_dir_all_recursive(&entry.path(), &dst.join(entry.file_name()))?;
+        } else {
+            fs::copy(entry.path(), dst.join(entry.file_name())).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn walk_find_dir(root: &Path, target_name: &str) -> Result<Option<PathBuf>, String> {
+    if let Ok(entries) = fs::read_dir(root) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if entry.file_name().to_string_lossy() == target_name {
+                    return Ok(Some(path));
+                }
+                if let Ok(Some(found)) = walk_find_dir(&path, target_name) {
+                    return Ok(Some(found));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+pub fn parse_import_input(input: &str) -> (String, Option<String>, Option<String>) {
+    let trimmed = input.trim();
+    let mut clean_cmd = trimmed;
+
+    // Strip leading npx / skills / add prefixes if pasted as a shell command
+    let prefixes = [
+        "npx skills add ",
+        "npx @agent/skills add ",
+        "npx @agents/skills add ",
+        "skills add ",
+        "add ",
+    ];
+
+    for prefix in &prefixes {
+        if let Some(rest) = clean_cmd.strip_prefix(prefix) {
+            clean_cmd = rest.trim();
+            break;
+        }
+    }
+
+    let tokens: Vec<&str> = clean_cmd.split_whitespace().collect();
+    let mut repo_target = "";
+    let mut sub_skill: Option<String> = None;
+    let mut custom_name: Option<String> = None;
+
+    let mut i = 0;
+    while i < tokens.len() {
+        let token = tokens[i];
+        if (token == "--skill" || token == "-s") && i + 1 < tokens.len() {
+            sub_skill = Some(tokens[i + 1].trim_matches('"').trim_matches('\'').to_string());
+            i += 2;
+        } else if (token == "--name" || token == "-n") && i + 1 < tokens.len() {
+            custom_name = Some(tokens[i + 1].trim_matches('"').trim_matches('\'').to_string());
+            i += 2;
+        } else if repo_target.is_empty() && !token.starts_with('-') {
+            repo_target = token.trim_matches('"').trim_matches('\'');
+            i += 1;
+        } else {
+            i += 1;
+        }
+    }
+
+    // Check if repo_target is a GitHub /tree/ URL e.g. https://github.com/vercel-labs/skills/tree/main/skills/find-skills
+    let mut final_repo = repo_target.to_string();
+    if final_repo.contains("github.com") && final_repo.contains("/tree/") {
+        if let Some(idx) = final_repo.find("/tree/") {
+            let base_repo = &final_repo[..idx];
+            let after_tree = &final_repo[idx + 6..];
+            let parts: Vec<&str> = after_tree.split('/').collect();
+            if parts.len() > 1 && sub_skill.is_none() {
+                sub_skill = Some(parts.last().unwrap().to_string());
+            }
+            final_repo = base_repo.to_string();
+        }
+    }
+
+    // Normalize shorthand owner/repo to https://github.com/owner/repo
+    if !final_repo.is_empty() && !final_repo.starts_with("http://") && !final_repo.starts_with("https://") && !final_repo.starts_with("git@") {
+        if final_repo.contains('/') && !final_repo.contains(' ') {
+            final_repo = format!("https://github.com/{}", final_repo);
+        }
+    }
+
+    (final_repo, sub_skill, custom_name)
+}
+
+pub fn import_url_into_vault(input: &str, ext_type: &ExtensionType, custom_name_opt: Option<String>) -> Result<String, String> {
+    let (repo_url, sub_skill_opt, parsed_name) = parse_import_input(input);
+    if repo_url.is_empty() {
+        return Err("No repository URL or command found in input.".to_string());
+    }
+
     let vault_dir = get_vault_dir(ext_type);
     let _ = fs::create_dir_all(&vault_dir);
 
-    let name_slug = if let Some(n) = custom_name {
+    let name_slug = if let Some(n) = custom_name_opt.or(parsed_name) {
         n
+    } else if let Some(ref s) = sub_skill_opt {
+        s.clone()
     } else {
-        url.split('/').last().unwrap_or("imported-item").replace(".git", "")
+        repo_url.split('/').last().unwrap_or("imported-item").replace(".git", "")
     };
 
     let target_dir = vault_dir.join(&name_slug);
@@ -294,21 +398,68 @@ pub fn import_url_into_vault(url: &str, ext_type: &ExtensionType, custom_name: O
         return Err(format!("Item '{}' already exists in vault.", name_slug));
     }
 
+    // Clone into isolated temporary directory
+    let temp_dir = std::env::temp_dir().join(format!("one_ring_import_{}_{}", std::process::id(), name_slug));
+    let _ = fs::remove_dir_all(&temp_dir);
+
     let output = Command::new("git")
-        .args(["clone", "--depth", "1", url, &target_dir.to_string_lossy()])
+        .args(["clone", "--depth", "1", &repo_url, &temp_dir.to_string_lossy()])
         .output()
         .map_err(|e| format!("Failed to execute git clone: {}", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let _ = fs::remove_dir_all(&temp_dir);
         return Err(format!("Git clone failed: {}", stderr));
     }
 
-    let git_folder = target_dir.join(".git");
+    // Remove .git folder from temp clone
+    let git_folder = temp_dir.join(".git");
     if git_folder.exists() {
         let _ = fs::remove_dir_all(git_folder);
     }
 
+    // If a sub_skill was specified, find and extract only that sub-skill directory
+    let source_to_copy = if let Some(ref skill_name) = sub_skill_opt {
+        let candidate_paths = [
+            temp_dir.join("skills").join(skill_name),
+            temp_dir.join(skill_name),
+            temp_dir.join("plugins").join(skill_name),
+            temp_dir.join("agents").join(skill_name),
+            temp_dir.join("commands").join(skill_name),
+            temp_dir.join("rules").join(skill_name),
+        ];
+
+        let found = candidate_paths.into_iter().find(|p| p.exists());
+        if let Some(src_sub) = found {
+            src_sub
+        } else {
+            let mut found_deep = None;
+            if let Ok(entries) = walk_find_dir(&temp_dir, skill_name) {
+                if let Some(p) = entries {
+                    found_deep = Some(p);
+                }
+            }
+            if let Some(p) = found_deep {
+                p
+            } else {
+                let _ = fs::remove_dir_all(&temp_dir);
+                return Err(format!("Could not find sub-skill '{}' in repository '{}'", skill_name, repo_url));
+            }
+        }
+    } else {
+        temp_dir.clone()
+    };
+
+    if source_to_copy.is_dir() {
+        copy_dir_all_recursive(&source_to_copy, &target_dir)
+            .map_err(|e| format!("Failed to copy imported files into Vault: {}", e))?;
+    } else {
+        fs::copy(&source_to_copy, &target_dir)
+            .map_err(|e| format!("Failed to copy imported file into Vault: {}", e))?;
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
     Ok(name_slug)
 }
 
@@ -342,5 +493,30 @@ mod tests {
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
+
+    #[test]
+    fn test_parse_import_input_variations() {
+        // Full npx command with --skill
+        let (repo1, sub1, name1) = parse_import_input("npx skills add https://github.com/vercel-labs/skills --skill find-skills");
+        assert_eq!(repo1, "https://github.com/vercel-labs/skills");
+        assert_eq!(sub1, Some("find-skills".to_string()));
+        assert_eq!(name1, None);
+
+        // Short command with -s
+        let (repo2, sub2, _) = parse_import_input("npx skills add vercel-labs/skills -s find-skills");
+        assert_eq!(repo2, "https://github.com/vercel-labs/skills");
+        assert_eq!(sub2, Some("find-skills".to_string()));
+
+        // GitHub tree URL
+        let (repo3, sub3, _) = parse_import_input("https://github.com/vercel-labs/skills/tree/main/skills/find-skills");
+        assert_eq!(repo3, "https://github.com/vercel-labs/skills");
+        assert_eq!(sub3, Some("find-skills".to_string()));
+
+        // Simple repo
+        let (repo4, sub4, _) = parse_import_input("vercel-labs/skills");
+        assert_eq!(repo4, "https://github.com/vercel-labs/skills");
+        assert_eq!(sub4, None);
+    }
 }
+
 

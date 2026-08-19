@@ -29,6 +29,53 @@ const PRESET_TEMPLATES = [
   },
 ];
 
+function parseNpxInput(input) {
+  if (!input || !input.trim()) return null;
+  let clean = input.trim();
+  const prefixes = [
+    "npx skills add ",
+    "npx @agent/skills add ",
+    "npx @agents/skills add ",
+    "skills add ",
+    "add ",
+  ];
+  let isCommand = false;
+  for (const p of prefixes) {
+    if (clean.startsWith(p)) {
+      clean = clean.slice(p.length).trim();
+      isCommand = true;
+      break;
+    }
+  }
+
+  const tokens = clean.split(/\s+/);
+  let repo = "";
+  let skill = null;
+  let name = null;
+
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if ((t === "--skill" || t === "-s") && i + 1 < tokens.length) {
+      skill = tokens[i + 1].replace(/['"]/g, "");
+      i++;
+    } else if ((t === "--name" || t === "-n") && i + 1 < tokens.length) {
+      name = tokens[i + 1].replace(/['"]/g, "");
+      i++;
+    } else if (!repo && !t.startsWith("-")) {
+      repo = t.replace(/['"]/g, "");
+    }
+  }
+
+  if (repo.includes("github.com") && repo.includes("/tree/")) {
+    const parts = repo.split("/tree/")[1]?.split("/");
+    if (parts && parts.length > 1 && !skill) {
+      skill = parts[parts.length - 1];
+    }
+  }
+
+  return { isCommand, repo, skill, name };
+}
+
 export default function AddSkillModal({
   isOpen,
   onClose,
@@ -205,26 +252,60 @@ export default function AddSkillModal({
           {activeTab === "import" ? (
             <form onSubmit={handleImportSubmit}>
               <div className="form-group">
-                <label className="form-label">Repository / Source URL</label>
+                <label className="form-label">Repository / Source URL or NPX Command</label>
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="https://github.com/anthropics/skills"
+                  placeholder="e.g. npx skills add vercel-labs/skills --skill find-skills"
                   value={importUrl}
                   onChange={(e) => setImportUrl(e.target.value)}
                   required
                   autoFocus
                 />
-                <span
-                  style={{
-                    fontSize: "0.72rem",
-                    color: "var(--text-muted)",
-                    marginTop: "4px",
-                    display: "block",
-                  }}
-                >
-                  GitHub repo URL or skills.sh package endpoint.
-                </span>
+                
+                {(() => {
+                  const parsed = parseNpxInput(importUrl);
+                  if (parsed && (parsed.isCommand || parsed.skill)) {
+                    return (
+                      <div
+                        style={{
+                          marginTop: "8px",
+                          padding: "6px 10px",
+                          borderRadius: "var(--radius-sm)",
+                          background: "var(--bg-app)",
+                          border: "1px solid var(--border-pill)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          fontSize: "0.74rem",
+                          color: "var(--text-secondary)",
+                        }}
+                      >
+                        <Sparkles size={12} color="var(--color-gold)" />
+                        <span>
+                          Target: <strong style={{ color: "var(--text-primary)" }}>{parsed.repo}</strong>
+                          {parsed.skill && (
+                            <>
+                              {" · "}Sub-skill: <strong style={{ color: "var(--color-linked)" }}>{parsed.skill}</strong>
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <span
+                      style={{
+                        fontSize: "0.72rem",
+                        color: "var(--text-muted)",
+                        marginTop: "4px",
+                        display: "block",
+                      }}
+                    >
+                      Supports full GitHub URLs, shorthand (<code>owner/repo</code>), or direct <code>npx skills add</code> commands with <code>--skill</code>.
+                    </span>
+                  );
+                })()}
               </div>
 
               <div className="form-group">
@@ -232,7 +313,7 @@ export default function AddSkillModal({
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="e.g. frontend-design"
+                  placeholder="e.g. find-skills"
                   value={customName}
                   onChange={(e) => setCustomName(e.target.value)}
                 />
