@@ -8,7 +8,7 @@ import ProjectMatrixView from "./components/ProjectMatrixView";
 import DoctorView from "./components/DoctorView";
 import TrashView from "./components/TrashView";
 import SkillDrawer from "./components/SkillDrawer";
-import AddSkillModal from "./components/AddSkillModal";
+import InstallExtensionModal from "./components/InstallExtensionModal";
 import ConfirmDeleteModal from "./components/ConfirmDeleteModal";
 import { CheckCircle2, Sparkles, Info } from "lucide-react";
 
@@ -131,18 +131,21 @@ export default function App() {
         if (proj.path === projectPath) {
           const items = [...(proj.items || [])];
           const idx = items.findIndex(
-            (i) => (i.item_id === itemId || i.id === itemId) && i.extension_type === extType
+            (i) =>
+              (i.item_id === itemId || i.id === itemId) &&
+              i.extension_type === extType &&
+              (i.target_agent === agentId || (!i.target_agent && agentId === "agents"))
           );
           const newStatus = enable ? "linked" : "unlinked";
           if (idx >= 0) {
-            items[idx] = { ...items[idx], status: newStatus };
+            items[idx] = { ...items[idx], status: newStatus, target_agent: agentId };
           } else {
             items.push({
               item_id: itemId,
               extension_type: extType,
               status: newStatus,
               target_agent: agentId,
-              path: `${projectPath}/.agents/${extType}s/${itemId}`,
+              path: `${projectPath}/${agentId === "claude" ? ".claude" : agentId === "cursor" ? ".cursor" : ".agents"}/${extType}s/${itemId}`,
             });
           }
           return { ...proj, items, skills: items };
@@ -471,13 +474,17 @@ export default function App() {
         onShowToast={showToast}
       />
 
-      {/* Add Extension Modal */}
-      <AddSkillModal
+      {/* Multi-Modal Install & Marketplace Modal */}
+      <InstallExtensionModal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          loadData();
+        }}
         onImport={handleImportItem}
         onCreate={handleCreateItem}
         onShowToast={showToast}
+        vaultItems={items}
       />
 
       {/* Unified Confirm Deletion / Quarantine Modal */}

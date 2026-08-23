@@ -73,27 +73,39 @@
   --transition-normal: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Light mode optional fallback - keeping near-black canvas default */
+/* Light mode theme */
 [data-theme="light"] {
-  --bg-app: #fbfbfb;
+  --bg-app: #f4f5f8;
   --bg-sidebar: #ffffff;
   --bg-surface: #ffffff;
   --bg-card: #ffffff;
-  --bg-card-hover: #f7f7f7;
-  --bg-input: #f2f2f2;
-  --bg-badge: #eeeeee;
-  --bg-canvas-mid: #e0e0e0;
+  --bg-card-hover: #f9fafb;
+  --bg-input: #eef0f4;
+  --bg-badge: #e4e7ec;
+  --bg-canvas-mid: #d1d5db;
 
-  --border-subtle: #e5e5e5;
-  --border-card: #e5e5e5;
-  --border-active: #0a0a0a;
-  --border-pill: #0a0a0a;
-  --border-pill-hover: #0a0a0a;
+  --border-subtle: #e5e7eb;
+  --border-card: #e5e7eb;
+  --border-active: #111827;
+  --border-pill: rgba(0, 0, 0, 0.16);
+  --border-pill-hover: rgba(0, 0, 0, 0.38);
 
-  --text-primary: #0a0a0a;
-  --text-secondary: #404040;
-  --text-muted: #737373;
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
   --text-on-primary: #ffffff;
+
+  --color-linked: #059669;
+  --color-linked-bg: rgba(5, 150, 105, 0.12);
+  --color-linked-border: rgba(5, 150, 105, 0.35);
+
+  --color-unmanaged: #d97706;
+  --color-unmanaged-bg: rgba(217, 119, 6, 0.12);
+  --color-unmanaged-border: rgba(217, 119, 6, 0.35);
+
+  --color-broken: #e11d48;
+  --color-broken-bg: rgba(225, 29, 72, 0.12);
+  --color-broken-border: rgba(225, 29, 72, 0.35);
 }
 
 * {
@@ -324,25 +336,65 @@ body {
   justify-content: center;
   gap: 8px;
   padding: 6px 16px;
-  background: #ffffff;
-  color: #0a0a0a;
+  background: var(--text-primary);
+  color: var(--text-on-primary);
   font-weight: 500;
   font-size: 0.8rem;
   letter-spacing: -0.01em;
   border-radius: var(--radius-pill);
-  border: 1px solid #ffffff;
+  border: 1px solid var(--text-primary);
   cursor: pointer;
   transition: all var(--transition-fast);
   white-space: nowrap;
 }
 
 .btn-primary:hover {
-  background: #eaeaea;
-  border-color: #eaeaea;
+  opacity: 0.9;
 }
 
 .btn-primary:active {
   transform: scale(0.98);
+}
+
+/* Segmented Control Pill Group */
+.segmented-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-pill);
+  border-radius: var(--radius-pill);
+  padding: 3px;
+}
+
+.segmented-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-family: var(--font-sans);
+  font-weight: 400;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.segmented-item:hover {
+  color: var(--text-primary);
+  background: var(--bg-badge);
+}
+
+.segmented-item.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-color: var(--border-pill);
+  font-weight: 500;
 }
 
 .btn-secondary {
@@ -640,10 +692,10 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: var(--border-subtle);
+  background-color: var(--bg-input);
   transition: var(--transition-fast);
   border-radius: var(--radius-pill);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-pill);
 }
 
 .slider:before {
@@ -659,12 +711,12 @@ body {
 }
 
 input:checked + .slider {
-  background-color: #ffffff;
-  border-color: #ffffff;
+  background-color: var(--color-linked);
+  border-color: var(--color-linked);
 }
 
 input:checked + .slider:before {
-  background-color: #0a0a0a;
+  background-color: #ffffff;
   transform: translateX(12px);
 }
 
@@ -1008,3 +1060,40 @@ input:checked + .slider:before {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* Marketplace & Installation Card Styles */
+.marketplace-item-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.marketplace-item-card:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: var(--bg-card-hover);
+}
+
+.source-mode-card {
+  background: var(--bg-app);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.source-mode-card:hover {
+  border-color: var(--border-pill);
+}
+
+.source-mode-card.active {
+  background: var(--bg-card);
+  border-color: var(--text-primary);
+}
+

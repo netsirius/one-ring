@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   FolderGit2,
   Plus,
@@ -10,14 +10,48 @@ import {
   List,
   Layers,
   Search,
-  X,
   Check,
+  Zap,
+  Info,
+  ShieldAlert,
 } from "lucide-react";
 import { api } from "../services/api";
 import { TYPE_CONFIG } from "./VaultView";
 
+const CANONICAL_TARGETS = [
+  {
+    id: "claude",
+    name: "Claude Code",
+    folder: ".claude",
+    icon: "🏛",
+    description: "Anthropic Claude Code CLI & Desktop (.claude/)",
+  },
+  {
+    id: "agents",
+    name: "Antigravity / Universal",
+    folder: ".agents",
+    icon: "⚡",
+    description: "Google Antigravity & Universal Agents Standard (.agents/)",
+  },
+  {
+    id: "cursor",
+    name: "Cursor AI",
+    folder: ".cursor",
+    icon: "🎯",
+    description: "Cursor AI rules and custom prompts (.cursor/)",
+  },
+  {
+    id: "codex",
+    name: "OpenAI Codex",
+    folder: ".codex",
+    icon: "🤖",
+    description: "OpenAI Codex skills and workflows (.codex/)",
+  },
+];
+
 export default function ProjectMatrixView({
   projects = [],
+  targets = [],
   items = [],
   vaultItems = [],
   onAddProject,
@@ -31,15 +65,17 @@ export default function ProjectMatrixView({
   onShowToast,
 }) {
   const allVaultItems = items.length > 0 ? items : vaultItems;
+
   const [selectedProjectPath, setSelectedProjectPath] = useState(
     projects[0]?.path || ""
   );
   const [newPathInput, setNewPathInput] = useState("");
   const [isAdding, setIsAdding] = useState(false);
-  const [isLinkVaultModalOpen, setIsLinkVaultModalOpen] = useState(false);
-  const [scope, setScope] = useState("active"); // "active" | "all"
+  const [scope, setScope] = useState("all"); // "all" | "active"
   const [filterType, setFilterType] = useState("all");
-  const [matrixViewMode, setMatrixViewMode] = useState("grid"); // "grid" | "table"
+  // Default to dense Table/Matrix view for maximum efficiency and minimum scrolling
+  const [matrixViewMode, setMatrixViewMode] = useState("table"); // "table" | "grid"
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Keep selected project path in sync when projects change
   useEffect(() => {
@@ -57,32 +93,55 @@ export default function ProjectMatrixView({
 
   const categories = ["all", "skill", "plugin", "agent", "command", "rule"];
 
-  const getItemStatusInProject = (item) => {
-    const projectItemStatus = (
-      currentProject?.items || currentProject?.skills || []
-    ).find(
+  // Helper to check target status for a specific item in the project
+  const getItemTargetStatus = (item, targetId) => {
+    if (!currentProject) return { status: "unlinked", isLinked: false, isUnmanaged: false, isActive: false };
+    const projectItems = currentProject.items || currentProject.skills || [];
+    const found = projectItems.find(
       (s) =>
         (s.item_id === item.id || s.id === item.id) &&
-        (s.extension_type === item.extension_type || !s.extension_type)
+        (s.extension_type === item.extension_type || !s.extension_type) &&
+        (s.target_agent === targetId ||
+          (!s.target_agent && (targetId === "agents" || targetId === "gemini")))
     );
-    const status = projectItemStatus?.status || "unlinked";
+    const status = found?.status || "unlinked";
     const isLinked = status === "linked";
     const isUnmanaged = status === "unmanaged_copy";
-    const isActive = isLinked || isUnmanaged;
-    return { status, isLinked, isUnmanaged, isActive };
+    return {
+      status,
+      isLinked,
+      isUnmanaged,
+      isActive: isLinked || isUnmanaged,
+      path: found?.path,
+    };
   };
 
-  const activeProjectLinksCount = currentProject
-    ? allVaultItems.filter((item) => getItemStatusInProject(item).isActive).length
-    : 0;
+  // Helper to check if item is active for ANY agent target in the project
+  const isItemActiveInProject = (item) => {
+    return CANONICAL_TARGETS.some((t) => getItemTargetStatus(item, t.id).isActive);
+  };
 
+  // Active links count per agent target in the active workspace
+  const targetCounts = useMemo(() => {
+    const counts = {};
+    for (const t of CANONICAL_TARGETS) {
+      counts[t.id] = allVaultItems.filter((i) => getItemTargetStatus(i, t.id).isActive).length;
+    }
+    return counts;
+  }, [currentProject, allVaultItems]);
+
+  const totalActiveItemsCount = useMemo(() => {
+    return allVaultItems.filter((i) => isItemActiveInProject(i)).length;
+  }, [currentProject, allVaultItems]);
+
+  // Filtered items based on scope, type, and search query
   const filteredItems = allVaultItems.filter((item) => {
-    const { isActive } = getItemStatusInProject(item);
+    const isActive = isItemActiveInProject(item);
     if (scope === "active" && !isActive) return false;
     if (filterType !== "all" && item.extension_type !== filterType) return false;
 
     if (searchQuery && searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase().trim();
       const matchName = (item.name || "").toLowerCase().includes(q);
       const matchDesc = (item.description || "").toLowerCase().includes(q);
       const matchType = (item.extension_type || "").toLowerCase().includes(q);
@@ -100,31 +159,37 @@ export default function ProjectMatrixView({
         setNewPathInput(selected);
       }
     } catch (err) {
-      console.error("Failed to select folder:", err);
+      console.error("Browse failed:", err);
     }
   };
 
-  const handleAddSubmit = (e) => {
+  const handleAddSubmit = async (e) => {
     e.preventDefault();
     if (!newPathInput.trim()) return;
-    const pathToAdd = newPathInput.trim();
-    onAddProject(pathToAdd);
-    setSelectedProjectPath(pathToAdd);
-    setNewPathInput("");
-    setIsAdding(false);
+    try {
+      await onAddProject(newPathInput.trim());
+      setSelectedProjectPath(newPathInput.trim());
+      setNewPathInput("");
+      setIsAdding(false);
+      if (onShowToast) onShowToast("Workspace registered successfully");
+    } catch (err) {
+      alert("Failed to add workspace: " + err);
+    }
   };
 
-  // Batch toggle all visible extensions in this project
-  const handleBatchToggleProject = async (enable) => {
+  // 1-Click Fast Sync Entire Project to a specific Agent Harness
+  const handleSyncToTarget = async (targetId, targetName) => {
     if (!currentProject) return;
-    for (const item of filteredItems) {
-      onToggleProjectItem(
-        currentProject.path,
-        item.extension_type,
-        item.id,
-        "agents",
-        enable
-      );
+    setIsSyncing(true);
+    try {
+      await api.syncProjectToTarget(currentProject.path, targetId, true);
+      if (onShowToast) onShowToast(`Synchronized all vault extensions to ${targetName}`);
+      window.location.reload ? window.location.reload() : null;
+    } catch (err) {
+      console.error("Sync failed:", err);
+      if (onShowToast) onShowToast(`Sync error: ${err}`);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -136,125 +201,83 @@ export default function ProjectMatrixView({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: "16px",
-          background: "var(--bg-card)",
-          padding: "16px 20px",
-          borderRadius: "var(--radius-sm)",
-          border: "1px solid var(--border-card)",
-          gap: "16px",
+          gap: "12px",
+          marginBottom: "14px",
           flexWrap: "wrap",
+          background: "var(--bg-app)",
+          padding: "10px 14px",
+          borderRadius: "var(--radius-sm)",
+          border: "1px solid var(--border-pill)",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            flex: 1,
-            minWidth: "280px",
-          }}
-        >
-          <div
-            style={{
-              width: "38px",
-              height: "38px",
-              borderRadius: "var(--radius-pill)",
-              backgroundColor: "var(--bg-app)",
-              border: "1px solid var(--border-pill)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <FolderGit2 size={18} color="var(--text-primary)" />
-          </div>
+        {/* Workspace Dropdown */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", flex: 1 }}>
+          <FolderGit2 size={16} color="var(--text-primary)" />
+          <span style={{ fontSize: "0.74rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+            ACTIVE WORKSPACE:
+          </span>
 
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="section-eyebrow">ACTIVE WORKSPACE</div>
-            {projects.length > 0 ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <select
-                  value={currentProject?.path || ""}
-                  onChange={(e) => setSelectedProjectPath(e.target.value)}
-                  style={{
-                    background: "var(--bg-app)",
-                    color: "var(--text-primary)",
-                    border: "1px solid var(--border-subtle)",
-                    borderRadius: "var(--radius-pill)",
-                    padding: "4px 12px",
-                    fontSize: "0.85rem",
-                    fontWeight: 500,
-                    outline: "none",
-                    cursor: "pointer",
-                    maxWidth: "280px",
-                  }}
-                >
-                  {projects.map((p) => (
-                    <option key={p.path} value={p.path}>
-                      {p.name} ({p.path.split("/").slice(-2).join("/")})
-                    </option>
-                  ))}
-                </select>
+          {projects.length > 0 ? (
+            <select
+              className="form-input"
+              style={{
+                height: "30px",
+                fontSize: "0.8rem",
+                padding: "2px 8px",
+                minWidth: "220px",
+                maxWidth: "340px",
+              }}
+              value={selectedProjectPath}
+              onChange={(e) => setSelectedProjectPath(e.target.value)}
+            >
+              {projects.map((p) => (
+                <option key={p.path} value={p.path}>
+                  {p.name} ({p.path.split("/").slice(-2).join("/")})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+              No workspace registered
+            </span>
+          )}
 
-                <button
-                  className="btn-secondary"
-                  style={{ padding: "3px 10px", fontSize: "0.72rem" }}
-                  onClick={() => onOpenFinder(currentProject.path)}
-                  title="Open project in Finder"
-                >
-                  <FolderOpen size={11} />
-                  <span>Finder</span>
-                </button>
+          {currentProject && (
+            <>
+              <button
+                className="btn-secondary"
+                style={{ height: "28px", padding: "0 8px", fontSize: "0.72rem" }}
+                onClick={() => onOpenFinder(currentProject.path)}
+                title="Reveal project root in macOS Finder"
+              >
+                <FolderOpen size={12} />
+                <span>Finder</span>
+              </button>
 
-                <button
-                  className="btn-icon"
-                  style={{ width: "28px", height: "28px", color: "var(--color-broken)" }}
-                  onClick={() => onRemoveProject(currentProject.path)}
-                  title="Unregister workspace from One Ring"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            ) : (
-              <span style={{ fontSize: "0.84rem", color: "var(--text-muted)" }}>
-                No workspaces registered yet
-              </span>
-            )}
-          </div>
+              <button
+                className="btn-icon"
+                style={{ height: "28px", width: "28px" }}
+                onClick={() => {
+                  if (confirm(`Unregister workspace "${currentProject.name}" from One Ring?`)) {
+                    onRemoveProject(currentProject.path);
+                  }
+                }}
+                title="Unregister workspace"
+              >
+                <Trash2 size={12} />
+              </button>
+            </>
+          )}
         </div>
 
-        {/* Toolbar Right: Stats, Link from Vault & Add Workspace buttons */}
-        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-          {currentProject && (
-            <div
-              className="tag-badge"
-              style={{
-                borderColor: activeProjectLinksCount > 0 ? "var(--color-linked-border)" : "var(--border-pill)",
-                color: activeProjectLinksCount > 0 ? "var(--color-linked)" : "var(--text-muted)",
-                background: activeProjectLinksCount > 0 ? "var(--color-linked-bg)" : "transparent",
-                padding: "4px 12px",
-                fontSize: "0.74rem",
-              }}
-            >
-              <span>{activeProjectLinksCount} Active in .agents/</span>
-            </div>
-          )}
-
-          {currentProject && allVaultItems.length > 0 && (
-            <button
-              className="btn-secondary"
-              style={{ padding: "6px 14px", fontSize: "0.78rem" }}
-              onClick={() => setIsLinkVaultModalOpen(true)}
-              title="Quickly choose extensions from Vault to link into this project"
-            >
-              <FolderPlus size={13} />
-              <span>Link from Vault</span>
-            </button>
-          )}
-
-          <button className="btn-primary" onClick={() => setIsAdding(!isAdding)}>
-            <Plus size={13} />
+        {/* Workspace Header Actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <button
+            className="btn-primary"
+            style={{ height: "28px", fontSize: "0.74rem", padding: "0 12px" }}
+            onClick={() => setIsAdding(!isAdding)}
+          >
+            <Plus size={12} />
             <span>Add Workspace</span>
           </button>
         </div>
@@ -266,10 +289,10 @@ export default function ProjectMatrixView({
           onSubmit={handleAddSubmit}
           style={{
             background: "var(--bg-card)",
-            padding: "16px 20px",
+            padding: "12px 16px",
             borderRadius: "var(--radius-sm)",
             border: "1px solid var(--border-active)",
-            marginBottom: "16px",
+            marginBottom: "14px",
             display: "flex",
             alignItems: "center",
             gap: "10px",
@@ -282,7 +305,7 @@ export default function ProjectMatrixView({
             placeholder="~/projects/my-app or /path/to/workspace"
             value={newPathInput}
             onChange={(e) => setNewPathInput(e.target.value)}
-            style={{ flex: 1, minWidth: "260px" }}
+            style={{ flex: 1, minWidth: "240px", height: "30px", fontSize: "0.8rem" }}
             autoFocus
             required
           />
@@ -290,18 +313,19 @@ export default function ProjectMatrixView({
             type="button"
             className="btn-secondary"
             onClick={handleBrowseFolder}
-            style={{ display: "flex", alignItems: "center", gap: "6px" }}
+            style={{ height: "30px", fontSize: "0.75rem" }}
             title="Choose folder with native Finder picker"
           >
-            <FolderOpen size={13} />
+            <FolderOpen size={12} />
             <span>Browse...</span>
           </button>
-          <button type="submit" className="btn-primary">
+          <button type="submit" className="btn-primary" style={{ height: "30px", fontSize: "0.75rem" }}>
             Register Workspace
           </button>
           <button
             type="button"
             className="btn-secondary"
+            style={{ height: "30px", fontSize: "0.75rem" }}
             onClick={() => setIsAdding(false)}
           >
             Cancel
@@ -309,203 +333,156 @@ export default function ProjectMatrixView({
         </form>
       )}
 
-      {/* Quick Link from Vault Modal */}
-      {isLinkVaultModalOpen && currentProject && (
-        <div className="modal-backdrop" onClick={() => setIsLinkVaultModalOpen(false)}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: "600px" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-header">
-              <div>
-                <h3 className="modal-title">Link Vault Skills & Extensions</h3>
-                <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "4px" }}>
-                  Select extensions from your Vault to activate in <strong>{currentProject.name}</strong> (<code>.agents/</code>)
-                </p>
-              </div>
-              <button
-                className="btn-icon"
-                onClick={() => setIsLinkVaultModalOpen(false)}
-                title="Close"
-              >
-                <X size={15} />
-              </button>
-            </div>
+      {/* COMPACT AGENT HARNESS CONTROL & FAST SYNC BAR */}
+      {currentProject && (
+        <div
+          style={{
+            background: "var(--bg-card)",
+            border: "1px solid var(--border-card)",
+            borderRadius: "var(--radius-sm)",
+            padding: "10px 14px",
+            marginBottom: "14px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "10px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "0.68rem",
+                letterSpacing: "1.2px",
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                marginRight: "4px",
+              }}
+            >
+              WORKSPACE AGENT HARNESSES:
+            </span>
 
-            <div style={{ maxHeight: "380px", overflowY: "auto", padding: "16px 20px" }}>
-              {allVaultItems.map((item) => {
-                const projectItemStatus = (
-                  currentProject.items || currentProject.skills || []
-                ).find(
-                  (s) =>
-                    (s.item_id === item.id || s.id === item.id) &&
-                    (s.extension_type === item.extension_type || !s.extension_type)
-                );
-                const isLinked = projectItemStatus?.status === "linked";
-                const isUnmanaged = projectItemStatus?.status === "unmanaged_copy";
-                const typeConfig = TYPE_CONFIG[item.extension_type] || TYPE_CONFIG.skill;
-
-                return (
-                  <div
-                    key={`modal_${item.extension_type}_${item.id}`}
+            {CANONICAL_TARGETS.map((target) => {
+              const count = targetCounts[target.id] || 0;
+              return (
+                <div
+                  key={target.id}
+                  style={{
+                    background: "var(--bg-app)",
+                    border: `1px solid ${count > 0 ? "var(--color-linked-border)" : "var(--border-subtle)"}`,
+                    borderRadius: "var(--radius-pill)",
+                    padding: "2px 8px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    fontSize: "0.7rem",
+                  }}
+                  title={target.description}
+                >
+                  <span
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "10px 14px",
-                      background: "var(--bg-app)",
-                      borderRadius: "6px",
-                      border: isLinked
-                        ? "1px solid var(--color-linked-border)"
-                        : "1px solid var(--border-subtle)",
-                      marginBottom: "8px",
+                      width: "6px",
+                      height: "6px",
+                      borderRadius: "50%",
+                      background: count > 0 ? "var(--color-linked)" : "var(--text-muted)",
+                    }}
+                  />
+                  <strong style={{ color: count > 0 ? "var(--text-primary)" : "var(--text-secondary)" }}>
+                    {target.name.split(" ")[0]}
+                  </strong>
+                  <code style={{ fontSize: "0.64rem", color: "var(--text-muted)" }}>{target.folder}/</code>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      color: count > 0 ? "var(--color-linked)" : "var(--text-muted)",
+                      fontWeight: 600,
                     }}
                   >
-                    <div style={{ flex: 1, minWidth: 0, paddingRight: "12px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                        <span
-                          className="tag-badge"
-                          style={{
-                            background: typeConfig.bg,
-                            color: typeConfig.color,
-                            borderColor: typeConfig.border,
-                            fontSize: "0.6rem",
-                            padding: "1px 6px",
-                          }}
-                        >
-                          {typeConfig.label}
-                        </span>
-                        <strong style={{ fontSize: "0.88rem", color: "var(--text-primary)" }}>
-                          {item.name}
-                        </strong>
-                      </div>
-                      <p style={{ fontSize: "0.76rem", color: "var(--text-secondary)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {item.description || "No description."}
-                      </p>
-                    </div>
+                    ({count})
+                  </span>
+                </div>
+              );
+            })}
+          </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      {isLinked ? (
-                        <button
-                          className="tag-badge"
-                          style={{
-                            background: "var(--color-linked-bg)",
-                            color: "var(--color-linked)",
-                            borderColor: "var(--color-linked-border)",
-                            padding: "4px 10px",
-                            fontSize: "0.72rem",
-                            cursor: "pointer",
-                          }}
-                          onClick={() =>
-                            onToggleProjectItem(
-                              currentProject.path,
-                              item.extension_type,
-                              item.id,
-                              "agents",
-                              false
-                            )
-                          }
-                          title="Click to unlink from project"
-                        >
-                          <Check size={11} style={{ marginRight: "4px" }} />
-                          <span>LINKED</span>
-                        </button>
-                      ) : (
-                        <button
-                          className="btn-primary"
-                          style={{ padding: "4px 12px", fontSize: "0.72rem" }}
-                          onClick={() =>
-                            onToggleProjectItem(
-                              currentProject.path,
-                              item.extension_type,
-                              item.id,
-                              "agents",
-                              true
-                            )
-                          }
-                        >
-                          <Plus size={11} />
-                          <span>Link to Project</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+          {/* 1-Click Fast Sync / Migration Buttons */}
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Fast Sync:</span>
+            <button
+              type="button"
+              className="tag-badge"
+              style={{
+                cursor: "pointer",
+                padding: "3px 8px",
+                fontSize: "0.68rem",
+                background: "var(--bg-app)",
+                borderColor: "var(--border-pill)",
+              }}
+              disabled={isSyncing}
+              onClick={() => handleSyncToTarget("claude", "Claude Code (.claude/)")}
+              title="Symlink all vault skills and rules into .claude/ for Claude Code"
+            >
+              <Zap size={11} color="var(--color-linked)" />
+              <span>Apply to Claude (.claude/)</span>
+            </button>
 
-            <div className="modal-footer" style={{ justifyContent: "space-between" }}>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  className="tag-badge"
-                  style={{ cursor: "pointer", padding: "4px 10px" }}
-                  onClick={() => handleBatchToggleProject(true)}
-                >
-                  LINK ALL
-                </button>
-                <button
-                  className="tag-badge"
-                  style={{ cursor: "pointer", padding: "4px 10px" }}
-                  onClick={() => handleBatchToggleProject(false)}
-                >
-                  UNLINK ALL
-                </button>
-              </div>
-              <button
-                className="btn-secondary"
-                onClick={() => setIsLinkVaultModalOpen(false)}
-              >
-                Done
-              </button>
-            </div>
+            <button
+              type="button"
+              className="tag-badge"
+              style={{
+                cursor: "pointer",
+                padding: "3px 8px",
+                fontSize: "0.68rem",
+                background: "var(--bg-app)",
+                borderColor: "var(--border-pill)",
+              }}
+              disabled={isSyncing}
+              onClick={() => handleSyncToTarget("agents", "Antigravity (.agents/)")}
+              title="Symlink all vault skills and rules into .agents/ for Antigravity & Gemini"
+            >
+              <Zap size={11} color="var(--color-linked)" />
+              <span>Apply to Antigravity (.agents/)</span>
+            </button>
           </div>
         </div>
       )}
 
-      {/* Controls Bar: Scope Selector + Category Chips + View Switcher + Batch Toggles */}
+      {/* Scope Filter, Category Filter, and View Mode Switcher */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: "16px",
-          gap: "12px",
+          gap: "10px",
+          marginBottom: "12px",
           flexWrap: "wrap",
         }}
       >
         <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-          {/* Scope Selector: Active in Workspace vs All Vault */}
-          <div style={{ display: "flex", gap: "4px", background: "var(--bg-card)", padding: "3px", borderRadius: "var(--radius-pill)", border: "1px solid var(--border-subtle)" }}>
+          {/* Scope Switcher */}
+          <div className="segmented-control">
             <button
-              className={`nav-tab-item ${scope === "active" ? "active" : ""}`}
-              style={{ padding: "3px 10px", fontSize: "0.72rem" }}
-              onClick={() => setScope("active")}
-            >
-              <span>Active in Project</span>
-              <span style={{ fontSize: "0.68rem", fontFamily: "var(--font-mono)", marginLeft: "4px" }}>
-                ({activeProjectLinksCount})
-              </span>
-            </button>
-            <button
-              className={`nav-tab-item ${scope === "all" ? "active" : ""}`}
-              style={{ padding: "3px 10px", fontSize: "0.72rem" }}
+              className={`segmented-item ${scope === "all" ? "active" : ""}`}
               onClick={() => setScope("all")}
             >
-              <span>All Vault</span>
-              <span style={{ fontSize: "0.68rem", fontFamily: "var(--font-mono)", marginLeft: "4px" }}>
-                ({allVaultItems.length})
-              </span>
+              All Vault ({allVaultItems.length})
+            </button>
+            <button
+              className={`segmented-item ${scope === "active" ? "active" : ""}`}
+              onClick={() => setScope("active")}
+            >
+              Active in Workspace ({totalActiveItemsCount})
             </button>
           </div>
 
           {/* Category Filter Chips */}
-          <div style={{ display: "flex", gap: "4px", overflowX: "auto", paddingBottom: "2px" }}>
+          <div style={{ display: "flex", gap: "4px", overflowX: "auto" }}>
             {categories.map((cat) => {
               const count =
                 cat === "all"
-                  ? (scope === "active" ? activeProjectLinksCount : allVaultItems.length)
-                  : allVaultItems.filter((i) => i.extension_type === cat && (scope === "all" || getItemStatusInProject(i).isActive)).length;
+                  ? (scope === "active" ? totalActiveItemsCount : allVaultItems.length)
+                  : allVaultItems.filter((i) => i.extension_type === cat && (scope === "all" || isItemActiveInProject(i))).length;
               const isActive = filterType === cat;
 
               return (
@@ -517,13 +494,13 @@ export default function ProjectMatrixView({
                     color: isActive ? "var(--text-primary)" : "var(--text-muted)",
                     borderColor: isActive ? "var(--text-primary)" : "var(--border-pill)",
                     cursor: "pointer",
-                    padding: "3px 10px",
-                    fontSize: "0.72rem",
+                    padding: "2px 8px",
+                    fontSize: "0.7rem",
                   }}
                   onClick={() => setFilterType(cat)}
                 >
                   <span>{cat.toUpperCase()}</span>
-                  <strong style={{ marginLeft: "4px", fontFamily: "var(--font-mono)" }}>
+                  <strong style={{ marginLeft: "3px", fontFamily: "var(--font-mono)" }}>
                     {count}
                   </strong>
                 </button>
@@ -532,400 +509,407 @@ export default function ProjectMatrixView({
           </div>
         </div>
 
-        {/* View Switcher & Batch Actions */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          {currentProject && filteredItems.length > 0 && (
-            <>
-              <button
-                className="tag-badge"
-                style={{ cursor: "pointer", padding: "3px 8px", fontSize: "0.7rem" }}
-                onClick={() => handleBatchToggleProject(true)}
-                title="Enable all visible extensions in this project"
-              >
-                ENABLE ALL
-              </button>
-              <button
-                className="tag-badge"
-                style={{ cursor: "pointer", padding: "3px 8px", fontSize: "0.7rem" }}
-                onClick={() => handleBatchToggleProject(false)}
-                title="Disable all visible extensions in this project"
-              >
-                DISABLE ALL
-              </button>
-            </>
-          )}
-
-          {/* Grid vs Table View Mode */}
-          <div className="view-mode-switch" style={{ marginLeft: "4px" }}>
-            <button
-              className={`view-mode-btn ${matrixViewMode === "grid" ? "active" : ""}`}
-              onClick={() => setMatrixViewMode("grid")}
-              title="Grid View (Spacious Cards)"
-            >
-              <LayoutGrid size={13} />
-            </button>
-            <button
-              className={`view-mode-btn ${matrixViewMode === "table" ? "active" : ""}`}
-              onClick={() => setMatrixViewMode("table")}
-              title="Table View (Dense List)"
-            >
-              <List size={13} />
-            </button>
-          </div>
+        {/* View Switcher: Dense Matrix Table vs Bento Cards */}
+        <div className="view-mode-switch">
+          <button
+            className={`view-mode-btn ${matrixViewMode === "table" ? "active" : ""}`}
+            onClick={() => setMatrixViewMode("table")}
+            title="Dense Matrix Table (High-speed switchboard, zero scroll)"
+          >
+            <List size={13} />
+            <span style={{ fontSize: "0.7rem", marginLeft: "4px" }}>Dense Matrix</span>
+          </button>
+          <button
+            className={`view-mode-btn ${matrixViewMode === "grid" ? "active" : ""}`}
+            onClick={() => setMatrixViewMode("grid")}
+            title="Compact Cards View"
+          >
+            <LayoutGrid size={13} />
+            <span style={{ fontSize: "0.7rem", marginLeft: "4px" }}>Cards</span>
+          </button>
         </div>
       </div>
 
-      {/* Main Project Matrix Content */}
+      {/* Main Workspace Content */}
       {!currentProject ? (
         <div className="empty-state">
-          <FolderGit2 size={44} color="var(--text-muted)" />
-          <h3 style={{ marginTop: "14px", marginBottom: "6px", fontWeight: 500, fontSize: "1rem", letterSpacing: "-0.02em" }}>
+          <FolderGit2 size={40} color="var(--text-muted)" />
+          <h3 style={{ marginTop: "12px", marginBottom: "4px", fontWeight: 500, fontSize: "0.95rem" }}>
             No Workspace Registered
           </h3>
-          <p style={{ fontSize: "0.84rem", color: "var(--text-secondary)", maxWidth: "420px", margin: "0 auto 16px" }}>
-            Register your project workspace folder to enable localized AI skills, plugins, and instructions inside its <code>.agents/</code> directory.
+          <p style={{ fontSize: "0.82rem", color: "var(--text-secondary)", maxWidth: "420px", margin: "0 auto 14px" }}>
+            Register your workspace folder to link extensions across Claude Code, Antigravity, Cursor, and Codex.
           </p>
           <button className="btn-primary" onClick={() => setIsAdding(true)}>
-            <Plus size={13} />
+            <Plus size={12} />
             <span>Add Workspace Folder</span>
           </button>
         </div>
       ) : allVaultItems.length === 0 ? (
         <div className="empty-state">
-          <Layers size={44} color="var(--text-muted)" />
-          <h3 style={{ marginTop: "14px", marginBottom: "6px", fontWeight: 500, fontSize: "1rem", letterSpacing: "-0.02em" }}>
+          <Layers size={40} color="var(--text-muted)" />
+          <h3 style={{ marginTop: "12px", marginBottom: "4px", fontWeight: 500, fontSize: "0.95rem" }}>
             Vault is Empty
           </h3>
-          <p style={{ fontSize: "0.84rem", color: "var(--text-secondary)", maxWidth: "420px", margin: "0 auto" }}>
-            You haven't added any skills, plugins, or rules to your central Vault yet. Add extensions in the <strong>Vault Library</strong> tab first to link them to this project.
+          <p style={{ fontSize: "0.82rem", color: "var(--text-secondary)", maxWidth: "420px", margin: "0 auto" }}>
+            Add extensions in the <strong>Browse Marketplaces</strong> or <strong>Vault Library</strong> tabs first.
           </p>
-        </div>
-      ) : scope === "active" && activeProjectLinksCount === 0 ? (
-        <div className="empty-state">
-          <FolderGit2 size={44} color="var(--text-muted)" />
-          <h3 style={{ marginTop: "14px", marginBottom: "6px", fontWeight: 500, fontSize: "1rem", letterSpacing: "-0.02em" }}>
-            No Extensions Active in this Workspace
-          </h3>
-          <p style={{ fontSize: "0.84rem", color: "var(--text-secondary)", maxWidth: "440px", margin: "0 auto 16px" }}>
-            <strong>{currentProject.name}</strong> doesn't have any skills or plugins linked yet. Link extensions from your Vault to activate them inside <code>.agents/</code>.
-          </p>
-          <button className="btn-primary" onClick={() => setIsLinkVaultModalOpen(true)}>
-            <FolderPlus size={13} />
-            <span>Link Extension from Vault</span>
-          </button>
         </div>
       ) : filteredItems.length === 0 ? (
         <div className="empty-state">
-          <Search size={40} color="var(--text-muted)" />
-          <h3 style={{ marginTop: "14px", marginBottom: "6px", fontWeight: 500, fontSize: "1rem", letterSpacing: "-0.02em" }}>
+          <Search size={36} color="var(--text-muted)" />
+          <h3 style={{ marginTop: "12px", marginBottom: "4px", fontWeight: 500, fontSize: "0.95rem" }}>
             No Matching Extensions
           </h3>
-          <p style={{ fontSize: "0.84rem", color: "var(--text-secondary)" }}>
-            No extensions match the selected category or search filter.
+          <p style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>
+            No extensions match the selected filter in this workspace.
           </p>
         </div>
-      ) : matrixViewMode === "grid" ? (
-        /* Spacious Grid Layout */
-        <div className="vault-grid">
-          {filteredItems.map((item) => {
-            const projectItemStatus = (
-              currentProject.items || currentProject.skills || []
-            ).find(
-              (s) =>
-                (s.item_id === item.id || s.id === item.id) &&
-                (s.extension_type === item.extension_type || !s.extension_type)
-            );
-            const status = projectItemStatus?.status || "unlinked";
-            const isLinked = status === "linked";
-            const isUnmanaged = status === "unmanaged_copy";
-            const isActive = isLinked || isUnmanaged;
-            const typeConfig = TYPE_CONFIG[item.extension_type] || TYPE_CONFIG.skill;
-            const TypeIcon = typeConfig.icon || Layers;
-
-            return (
-              <div
-                key={`${item.extension_type}_${item.id}`}
-                className="vault-card"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  borderColor: isLinked
-                    ? "var(--color-linked-border)"
-                    : isUnmanaged
-                    ? "var(--color-unmanaged-border)"
-                    : "var(--border-card)",
-                }}
-              >
-                <div>
-                  {/* Top card bar: Type badge + Actions */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: "12px",
-                    }}
-                  >
-                    <span
-                      className="tag-badge"
-                      style={{
-                        background: typeConfig.bg,
-                        color: typeConfig.color,
-                        borderColor: typeConfig.border,
-                        fontWeight: 500,
-                        fontSize: "0.64rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      <TypeIcon size={9} />
-                      <span>{typeConfig.label}</span>
-                    </span>
-
-                    {/* Right side controls: Remove button + Switch */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      {/* Direct Remove/Unlink button from project */}
-                      {isActive && onRemoveProjectItem && (
-                        <button
-                          className="btn-icon"
-                          style={{
-                            width: "26px",
-                            height: "26px",
-                            color: "var(--color-broken)",
-                            borderColor: "var(--border-subtle)",
-                          }}
-                          onClick={() =>
-                            onRemoveProjectItem(
-                              currentProject.path,
-                              item.extension_type,
-                              item.id
-                            )
-                          }
-                          title="Remove / Unlink from project (.agents/)"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      )}
-
-                      <span
-                        style={{
-                          fontSize: "0.7rem",
-                          color: isLinked
-                            ? "var(--color-linked)"
-                            : isUnmanaged
-                            ? "var(--color-unmanaged)"
-                            : "var(--text-muted)",
-                          fontFamily: "var(--font-mono)",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {isLinked ? "ACTIVE" : isUnmanaged ? "UNMANAGED" : "OFF"}
-                      </span>
-
-                      <label className="switch">
-                        <input
-                          type="checkbox"
-                          checked={isLinked}
-                          onChange={(e) =>
-                            onToggleProjectItem(
-                              currentProject.path,
-                              item.extension_type,
-                              item.id,
-                              "agents",
-                              e.target.checked
-                            )
-                          }
-                        />
-                        <span className="slider"></span>
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Title & Description */}
-                  <h4
-                    style={{
-                      fontSize: "0.95rem",
-                      fontWeight: 500,
-                      color: "var(--text-primary)",
-                      letterSpacing: "-0.02em",
-                      marginBottom: "6px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                    }}
-                    onClick={() => onInspectItem(item)}
-                  >
-                    <span>{item.name}</span>
-                    <ArrowUpRight size={12} color="var(--text-muted)" />
-                  </h4>
-
-                  <p
-                    style={{
-                      fontSize: "0.8rem",
-                      color: "var(--text-secondary)",
-                      lineHeight: "1.45",
-                      marginBottom: "12px",
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {item.description || "No description provided."}
-                  </p>
-                </div>
-
-                {/* Card Footer: Target Subdirectory Path */}
-                <div
-                  style={{
-                    paddingTop: "10px",
-                    borderTop: "1px solid var(--border-subtle)",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    fontSize: "0.72rem",
-                    color: isLinked
-                      ? "var(--color-linked)"
-                      : isUnmanaged
-                      ? "var(--color-unmanaged)"
-                      : "var(--text-muted)",
-                    fontFamily: "var(--font-mono)",
-                  }}
-                >
-                  <span>
-                    {isLinked
-                      ? `● .agents/${item.extension_type}s/${item.id}`
-                      : isUnmanaged
-                      ? `▲ Unmanaged folder in .agents/`
-                      : `○ Inactive in project`}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        /* Clean Dense Table Layout */
-        <div className="vault-table-container">
-          <table className="vault-table">
+      ) : matrixViewMode === "table" ? (
+        /* ULTRA-DENSE MATRIX TABLE VIEW (HIGHEST SPEED & ZERO SCROLL FATIGUE) */
+        <div
+          style={{
+            background: "var(--bg-card)",
+            border: "1px solid var(--border-card)",
+            borderRadius: "var(--radius-sm)",
+            overflowX: "auto",
+          }}
+        >
+          <table className="vault-table" style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr>
-                <th style={{ padding: "10px 18px", width: "240px" }}>Extension</th>
-                <th style={{ padding: "10px 14px", width: "110px" }}>Type</th>
-                <th style={{ padding: "10px 18px" }}>Description</th>
-                <th style={{ padding: "10px 18px", width: "220px" }}>Workspace Path</th>
-                <th style={{ padding: "10px 18px", textAlign: "right", width: "160px" }}>
-                  Active in Project
+              <tr style={{ background: "var(--bg-app)", borderBottom: "1px solid var(--border-subtle)" }}>
+                <th style={{ textAlign: "left", padding: "8px 12px", fontSize: "0.68rem", width: "38%" }}>
+                  EXTENSION / PATH
+                </th>
+                <th style={{ textAlign: "left", padding: "8px 10px", fontSize: "0.68rem", width: "12%" }}>
+                  TYPE
+                </th>
+                {CANONICAL_TARGETS.map((target) => (
+                  <th
+                    key={target.id}
+                    style={{
+                      textAlign: "center",
+                      padding: "8px 6px",
+                      fontSize: "0.68rem",
+                      width: "12%",
+                    }}
+                  >
+                    <span>{target.icon} {target.name.split(" ")[0].toUpperCase()}</span>
+                  </th>
+                ))}
+                <th style={{ textAlign: "center", padding: "8px 8px", fontSize: "0.68rem", width: "6%" }}>
+                  DOC
                 </th>
               </tr>
             </thead>
             <tbody>
               {filteredItems.map((item) => {
-                const projectItemStatus = (
-                  currentProject.items || currentProject.skills || []
-                ).find(
-                  (s) =>
-                    (s.item_id === item.id || s.id === item.id) &&
-                    (s.extension_type === item.extension_type || !s.extension_type)
-                );
-                const status = projectItemStatus?.status || "unlinked";
-                const isLinked = status === "linked";
-                const isUnmanaged = status === "unmanaged_copy";
-                const isActive = isLinked || isUnmanaged;
                 const typeConfig = TYPE_CONFIG[item.extension_type] || TYPE_CONFIG.skill;
                 const TypeIcon = typeConfig.icon || Layers;
+                const isActiveAnywhere = isItemActiveInProject(item);
+
+                // Find active paths for quick tooltip/badge
+                const activePathList = CANONICAL_TARGETS
+                  .map((t) => {
+                    const s = getItemTargetStatus(item, t.id);
+                    return s.isActive ? `${t.folder}/${item.extension_type}s/${item.id}` : null;
+                  })
+                  .filter(Boolean);
 
                 return (
-                  <tr key={`${item.extension_type}_${item.id}`}>
-                    <td style={{ padding: "12px 18px", fontWeight: 500 }}>
-                      <div
-                        style={{
-                          cursor: "pointer",
-                          color: "var(--text-primary)",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                        }}
-                        onClick={() => onInspectItem(item)}
-                      >
-                        <span>{item.name}</span>
-                        <ArrowUpRight size={11} color="var(--text-muted)" />
+                  <tr
+                    key={`${item.extension_type}_${item.id}`}
+                    style={{
+                      borderBottom: "1px solid var(--border-subtle)",
+                      background: isActiveAnywhere ? "var(--bg-card)" : "transparent",
+                    }}
+                  >
+                    {/* Extension Name & Active Paths */}
+                    <td style={{ padding: "8px 12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span
+                          style={{
+                            width: "6px",
+                            height: "6px",
+                            borderRadius: "50%",
+                            background: isActiveAnywhere ? "var(--color-linked)" : "var(--border-subtle)",
+                            flexShrink: 0,
+                          }}
+                        />
+                        <strong
+                          style={{
+                            fontSize: "0.82rem",
+                            color: "var(--text-primary)",
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                          onClick={() => onInspectItem(item)}
+                          title="Click to view raw source & documentation"
+                        >
+                          {item.name}
+                        </strong>
+
+                        {activePathList.length > 0 && (
+                          <span
+                            style={{
+                              fontSize: "0.64rem",
+                              fontFamily: "var(--font-mono)",
+                              color: "var(--color-linked)",
+                              background: "var(--color-linked-bg)",
+                              border: "1px solid var(--color-linked-border)",
+                              borderRadius: "4px",
+                              padding: "1px 5px",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              maxWidth: "220px",
+                            }}
+                          >
+                            {activePathList[0]}
+                          </span>
+                        )}
                       </div>
                     </td>
-                    <td style={{ padding: "12px 14px" }}>
+
+                    {/* Type Badge */}
+                    <td style={{ padding: "8px 10px" }}>
                       <span
                         className="tag-badge"
                         style={{
                           background: typeConfig.bg,
                           color: typeConfig.color,
                           borderColor: typeConfig.border,
-                          fontWeight: 500,
-                          fontSize: "0.64rem",
-                          textTransform: "uppercase",
+                          fontSize: "0.6rem",
+                          padding: "1px 6px",
                         }}
                       >
                         <TypeIcon size={9} />
-                        <span>{typeConfig.label}</span>
+                        <span>{typeConfig.label.toUpperCase()}</span>
                       </span>
                     </td>
-                    <td style={{ padding: "12px 18px", fontSize: "0.8rem", color: "var(--text-secondary)" }}>
-                      {item.description || "—"}
-                    </td>
-                    <td style={{ padding: "12px 18px", fontSize: "0.74rem", color: isLinked ? "var(--color-linked)" : isUnmanaged ? "var(--color-unmanaged)" : "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                      {isLinked
-                        ? `.agents/${item.extension_type}s/${item.id}`
-                        : isUnmanaged
-                        ? `Unmanaged in .agents/`
-                        : "—"}
-                    </td>
-                    <td style={{ padding: "12px 18px", textAlign: "right" }}>
-                      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "8px" }}>
-                        {isActive && onRemoveProjectItem && (
+
+                    {/* Target Agent Switches */}
+                    {CANONICAL_TARGETS.map((target) => {
+                      const { isLinked, isUnmanaged } = getItemTargetStatus(item, target.id);
+                      return (
+                        <td key={target.id} style={{ textAlign: "center", padding: "6px" }}>
                           <button
-                            className="btn-icon"
+                            type="button"
+                            className="tag-badge"
                             style={{
-                              width: "26px",
-                              height: "26px",
-                              color: "var(--color-broken)",
-                              borderColor: "var(--border-subtle)",
+                              cursor: "pointer",
+                              padding: "3px 8px",
+                              fontSize: "0.66rem",
+                              width: "72px",
+                              justifyContent: "center",
+                              background: isLinked
+                                ? "var(--color-linked-bg)"
+                                : isUnmanaged
+                                ? "var(--color-unmanaged-bg)"
+                                : "transparent",
+                              borderColor: isLinked
+                                ? "var(--color-linked-border)"
+                                : isUnmanaged
+                                ? "var(--color-unmanaged-border)"
+                                : "var(--border-subtle)",
+                              color: isLinked
+                                ? "var(--color-linked)"
+                                : isUnmanaged
+                                ? "var(--color-unmanaged)"
+                                : "var(--text-muted)",
                             }}
                             onClick={() =>
-                              onRemoveProjectItem(
-                                currentProject.path,
-                                item.extension_type,
-                                item.id
-                              )
-                            }
-                            title="Remove / Unlink from project (.agents/)"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        )}
-
-                        <label className="switch">
-                          <input
-                            type="checkbox"
-                            checked={isLinked}
-                            onChange={(e) =>
                               onToggleProjectItem(
                                 currentProject.path,
                                 item.extension_type,
                                 item.id,
-                                "agents",
-                                e.target.checked
+                                target.id,
+                                !isLinked
                               )
                             }
-                          />
-                          <span className="slider"></span>
-                        </label>
-                      </div>
+                            title={`Toggle ${item.name} for ${target.name} (${target.folder}/)`}
+                          >
+                            <span style={{ fontWeight: isLinked ? 600 : 400 }}>
+                              {isLinked ? "ON" : isUnmanaged ? "UNM" : "OFF"}
+                            </span>
+                          </button>
+                        </td>
+                      );
+                    })}
+
+                    {/* Doc Button */}
+                    <td style={{ textAlign: "center", padding: "6px" }}>
+                      <button
+                        className="btn-icon"
+                        style={{ width: "24px", height: "24px", padding: 0 }}
+                        onClick={() => onInspectItem(item)}
+                        title="View Documentation & Files"
+                      >
+                        <Info size={11} />
+                      </button>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        </div>
+      ) : (
+        /* COMPACT BENTO CARDS VIEW */
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+            gap: "10px",
+          }}
+        >
+          {filteredItems.map((item) => {
+            const typeConfig = TYPE_CONFIG[item.extension_type] || TYPE_CONFIG.skill;
+            const TypeIcon = typeConfig.icon || Layers;
+            const isActiveAnywhere = isItemActiveInProject(item);
+
+            return (
+              <div
+                key={`${item.extension_type}_${item.id}`}
+                className="vault-card"
+                style={{
+                  padding: "12px 14px",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  borderColor: isActiveAnywhere ? "var(--border-pill)" : "var(--border-card)",
+                }}
+              >
+                <div>
+                  {/* Top Bar: Type + Name + Doc Icon */}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: "6px",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", overflow: "hidden" }}>
+                      <span
+                        className="tag-badge"
+                        style={{
+                          background: typeConfig.bg,
+                          color: typeConfig.color,
+                          borderColor: typeConfig.border,
+                          fontSize: "0.6rem",
+                          padding: "1px 5px",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <TypeIcon size={9} />
+                        <span>{typeConfig.label.toUpperCase()}</span>
+                      </span>
+
+                      <strong
+                        style={{
+                          fontSize: "0.86rem",
+                          color: "var(--text-primary)",
+                          cursor: "pointer",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        onClick={() => onInspectItem(item)}
+                      >
+                        {item.name}
+                      </strong>
+                    </div>
+
+                    <button
+                      className="btn-icon"
+                      style={{ width: "22px", height: "22px", flexShrink: 0 }}
+                      onClick={() => onInspectItem(item)}
+                      title="Inspect"
+                    >
+                      <ArrowUpRight size={11} />
+                    </button>
+                  </div>
+
+                  {/* 1-Line Description */}
+                  <p
+                    style={{
+                      fontSize: "0.74rem",
+                      color: "var(--text-secondary)",
+                      lineHeight: "1.3",
+                      marginBottom: "10px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {item.description || "No description provided."}
+                  </p>
+                </div>
+
+                {/* Inline Horizontal Agent Switches */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "4px",
+                    borderTop: "1px solid var(--border-subtle)",
+                    paddingTop: "8px",
+                  }}
+                >
+                  {CANONICAL_TARGETS.map((target) => {
+                    const { isLinked, isUnmanaged } = getItemTargetStatus(item, target.id);
+                    return (
+                      <button
+                        key={target.id}
+                        type="button"
+                        className="tag-badge"
+                        style={{
+                          cursor: "pointer",
+                          padding: "3px 6px",
+                          fontSize: "0.64rem",
+                          flex: 1,
+                          justifyContent: "center",
+                          background: isLinked
+                            ? "var(--color-linked-bg)"
+                            : isUnmanaged
+                            ? "var(--color-unmanaged-bg)"
+                            : "var(--bg-app)",
+                          borderColor: isLinked
+                            ? "var(--color-linked-border)"
+                            : isUnmanaged
+                            ? "var(--color-unmanaged-border)"
+                            : "var(--border-subtle)",
+                          color: isLinked
+                            ? "var(--color-linked)"
+                            : isUnmanaged
+                            ? "var(--color-unmanaged)"
+                            : "var(--text-muted)",
+                        }}
+                        onClick={() =>
+                          onToggleProjectItem(
+                            currentProject.path,
+                            item.extension_type,
+                            item.id,
+                            target.id,
+                            !isLinked
+                          )
+                        }
+                        title={`${target.name} (${target.folder}/)`}
+                      >
+                        <span>{target.name.split(" ")[0]}</span>
+                        <strong style={{ marginLeft: "3px", fontFamily: "var(--font-mono)" }}>
+                          {isLinked ? "ON" : "OFF"}
+                        </strong>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

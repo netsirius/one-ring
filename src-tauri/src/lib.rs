@@ -1,4 +1,5 @@
 pub mod adapters;
+pub mod marketplaces;
 pub mod models;
 pub mod projects;
 pub mod symlink;
@@ -6,7 +7,7 @@ pub mod trash;
 pub mod vault;
 
 use adapters::{get_known_targets, get_target_by_id, get_vault_dir};
-use models::{AgentTarget, DoctorIssue, ExtensionType, LinkStatus, ProjectWorkspace, SystemStats, TrashItem, VaultItem};
+use models::{AgentTarget, DoctorIssue, ExtensionType, LinkStatus, MarketplaceCatalogItem, MarketplaceSource, ProjectWorkspace, SystemStats, TrashItem, VaultItem};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -141,6 +142,11 @@ fn toggle_project_skill(project_path: String, skill_id: String, agent_id: String
 }
 
 #[tauri::command]
+fn sync_project_to_target(project_path: String, target_agent: String, enable: bool) -> Result<usize, String> {
+    projects::sync_project_to_target(&project_path, &target_agent, enable)
+}
+
+#[tauri::command]
 fn get_item_content(item_id: String, ext_type: String) -> Result<String, String> {
     let t = parse_ext_type(&ext_type);
     vault::get_item_raw_content(&t, &item_id)
@@ -245,6 +251,45 @@ fn import_item(url: String, ext_type: String, custom_name: Option<String>) -> Re
 #[tauri::command]
 fn import_skill(url: String, custom_name: Option<String>) -> Result<String, String> {
     import_item(url, "skill".to_string(), custom_name)
+}
+
+#[tauri::command]
+fn import_local_folder(path: String, ext_type: String, custom_name: Option<String>) -> Result<String, String> {
+    let t = parse_ext_type(&ext_type);
+    let p = PathBuf::from(&path);
+    vault::import_local_folder(&p, &t, custom_name)
+}
+
+#[tauri::command]
+fn import_raw_url(url: String, ext_type: String, custom_name: Option<String>) -> Result<String, String> {
+    let t = parse_ext_type(&ext_type);
+    vault::import_raw_file_url(&url, &t, custom_name)
+}
+
+#[tauri::command]
+fn get_marketplaces() -> Vec<MarketplaceSource> {
+    marketplaces::list_marketplaces()
+}
+
+#[tauri::command]
+fn add_marketplace(name: String, url: String, description: String) -> Result<MarketplaceSource, String> {
+    marketplaces::add_marketplace(&name, &url, &description)
+}
+
+#[tauri::command]
+fn remove_marketplace(id: String) -> Result<(), String> {
+    marketplaces::remove_marketplace(&id)
+}
+
+#[tauri::command]
+fn get_marketplace_catalog() -> Vec<MarketplaceCatalogItem> {
+    marketplaces::get_marketplace_catalog()
+}
+
+#[tauri::command]
+fn install_marketplace_item(item_id: String, marketplace_id: String, ext_type: String) -> Result<String, String> {
+    let t = parse_ext_type(&ext_type);
+    marketplaces::install_marketplace_item(&item_id, &marketplace_id, &t)
 }
 
 #[tauri::command]
@@ -427,7 +472,15 @@ pub fn run() {
             get_system_stats,
             open_path_in_finder,
             select_folder_dialog,
-            remove_item_from_project
+            remove_item_from_project,
+            get_marketplaces,
+            add_marketplace,
+            remove_marketplace,
+            get_marketplace_catalog,
+            install_marketplace_item,
+            import_local_folder,
+            import_raw_url,
+            sync_project_to_target
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

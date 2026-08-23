@@ -149,6 +149,29 @@ pub struct SystemStats {
     pub trash_count: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MarketplaceSource {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub description: String,
+    pub default_marketplace: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MarketplaceCatalogItem {
+    pub id: String,
+    pub name: String,
+    pub extension_type: ExtensionType,
+    pub description: String,
+    pub source_url: String,
+    pub marketplace_id: String,
+    pub version: Option<String>,
+    pub author: Option<String>,
+    pub tags: Vec<String>,
+    pub is_installed: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

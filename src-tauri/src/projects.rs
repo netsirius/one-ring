@@ -1,7 +1,8 @@
 use crate::adapters::{get_known_targets, get_projects_file, get_vault_dir, resolve_project_target_dir};
-use crate::models::{ExtensionType, LinkStatus, ProjectItemStatus, ProjectWorkspace};
+use crate::models::{ExtensionType, ProjectItemStatus, ProjectWorkspace};
 use crate::symlink::{check_link_status, create_link, remove_link};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
@@ -44,6 +45,7 @@ pub fn get_saved_projects() -> Vec<ProjectWorkspace> {
                 .to_string();
 
             let mut item_statuses = Vec::new();
+            let mut seen_keys = HashSet::new();
 
             for ext_type in &types {
                 let vault_dir = get_vault_dir(ext_type);
@@ -57,23 +59,55 @@ pub fn get_saved_projects() -> Vec<ProjectWorkspace> {
                             continue;
                         }
 
-                        // Use Standard (.agents) target for project workspace links
-                        let default_target = targets
-                            .iter()
-                            .find(|t| t.id == "agents")
-                            .unwrap_or(&targets[0]);
+                        // Check status across ALL agent targets (claude, gemini, agents, cursor, codex)
+                        for target in &targets {
+                            if let Some(project_target_dir) = resolve_project_target_dir(&path, target, ext_type) {
+                                let target_dest = project_target_dir.join(&item_name);
+                                let status = check_link_status(&v_path, &target_dest);
 
-                        if let Some(project_target_dir) = resolve_project_target_dir(&path, default_target, ext_type) {
-                            let target_dest = project_target_dir.join(&item_name);
-                            let status = check_link_status(&v_path, &target_dest);
+                                let key = format!("{}:{}:{}", item_name, ext_type.as_str(), target.id);
+                                if seen_keys.insert(key) {
+                                    item_statuses.push(ProjectItemStatus {
+                                        item_id: item_name.clone(),
+                                        extension_type: ext_type.clone(),
+                                        status,
+                                        target_agent: target.id.clone(),
+                                        path: target_dest.to_string_lossy().to_string(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
-                            item_statuses.push(ProjectItemStatus {
-                                item_id: item_name,
-                                extension_type: ext_type.clone(),
-                                status,
-                                target_agent: default_target.id.clone(),
-                                path: target_dest.to_string_lossy().to_string(),
-                            });
+            // Also check project directories for unmanaged files not in vault
+            for target in &targets {
+                for ext_type in &types {
+                    if let Some(project_target_dir) = resolve_project_target_dir(&path, target, ext_type) {
+                        if project_target_dir.is_dir() {
+                            if let Ok(entries) = fs::read_dir(&project_target_dir) {
+                                for entry in entries.flatten() {
+                                    let item_name = entry.file_name().to_string_lossy().to_string();
+                                    if item_name.starts_with('.') {
+                                        continue;
+                                    }
+                                    let key = format!("{}:{}:{}", item_name, ext_type.as_str(), target.id);
+                                    if seen_keys.insert(key) {
+                                        let v_path = get_vault_dir(ext_type).join(&item_name);
+                                        let target_dest = project_target_dir.join(&item_name);
+                                        let status = check_link_status(&v_path, &target_dest);
+
+                                        item_statuses.push(ProjectItemStatus {
+                                            item_id: item_name,
+                                            extension_type: ext_type.clone(),
+                                            status,
+                                            target_agent: target.id.clone(),
+                                            path: target_dest.to_string_lossy().to_string(),
+                                        });
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -138,82 +172,65 @@ pub fn remove_saved_project(project_path_str: &str) -> Result<(), String> {
     }
 
     let p_path = PathBuf::from(project_path_str);
-    let canonical = fs::canonicalize(&p_path).ok();
+    let canonical_str = fs::canonicalize(&p_path)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| project_path_str.to_string());
 
-    store.projects.retain(|p| {
-        if p == project_path_str {
-            return false;
-        }
-        if let Some(ref c) = canonical {
-            if c.to_string_lossy() == *p {
-                return false;
-            }
-        }
-        true
-    });
+    store.projects.retain(|p| p != &canonical_str && p != project_path_str);
 
     let json = serde_json::to_string_pretty(&store).unwrap();
-    fs::write(&file, json).map_err(|e| format!("Failed to update projects: {}", e))?;
+    fs::write(&file, json).map_err(|e| format!("Failed to update project list: {}", e))?;
 
     Ok(())
 }
 
-pub fn toggle_project_item(
+pub fn sync_project_to_target(
     project_path_str: &str,
-    ext_type_str: &str,
-    item_id: &str,
-    target_agent_id: Option<String>,
+    target_agent_id: &str,
     enable: bool,
-) -> Result<LinkStatus, String> {
-    let project_path = PathBuf::from(project_path_str);
-    if !project_path.exists() {
-        return Err(format!("Project path '{}' does not exist.", project_path_str));
-    }
-
-    let ext_type = ExtensionType::from_folder(ext_type_str)
-        .or_else(|| {
-            match ext_type_str {
-                "skill" => Some(ExtensionType::Skill),
-                "agent" => Some(ExtensionType::Agent),
-                "plugin" => Some(ExtensionType::Plugin),
-                "command" => Some(ExtensionType::Command),
-                "rule" => Some(ExtensionType::Rule),
-                _ => None,
-            }
-        })
-        .unwrap_or(ExtensionType::Skill);
-
-    let vault_dir = get_vault_dir(&ext_type);
-    let item_vault_path = vault_dir.join(item_id);
-    if !item_vault_path.exists() {
-        return Err(format!("Item '{}' not found in vault.", item_id));
-    }
-
+) -> Result<usize, String> {
     let targets = get_known_targets();
-    let target = if let Some(agent_id) = target_agent_id {
-        targets.into_iter().find(|t| t.id == agent_id)
-            .ok_or_else(|| format!("Unknown agent target: {}", agent_id))?
-    } else {
-        targets
-            .into_iter()
-            .find(|t| t.supported_types.contains(&ext_type))
-            .ok_or_else(|| "No compatible agent target found".to_string())?
-    };
+    let target = targets
+        .iter()
+        .find(|t| t.id == target_agent_id)
+        .ok_or_else(|| format!("Target agent '{}' not found.", target_agent_id))?;
 
-    if !target.supported_types.contains(&ext_type) {
-        return Ok(LinkStatus::Incompatible);
+    let p_path = PathBuf::from(project_path_str);
+    let types = [
+        ExtensionType::Skill,
+        ExtensionType::Agent,
+        ExtensionType::Plugin,
+        ExtensionType::Command,
+        ExtensionType::Rule,
+    ];
+
+    let mut affected_count = 0;
+
+    for ext_type in &types {
+        let vault_dir = get_vault_dir(ext_type);
+        if let Ok(entries) = fs::read_dir(&vault_dir) {
+            for entry in entries.flatten() {
+                let v_path = entry.path();
+                let item_name = entry.file_name().to_string_lossy().to_string();
+                if item_name.starts_with('.') {
+                    continue;
+                }
+
+                if let Some(dest_dir) = resolve_project_target_dir(&p_path, target, ext_type) {
+                    let dest_path = dest_dir.join(&item_name);
+                    if enable {
+                        if create_link(&v_path, &dest_path).is_ok() {
+                            affected_count += 1;
+                        }
+                    } else {
+                        if remove_link(&dest_path).is_ok() {
+                            affected_count += 1;
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    let project_target_dir = resolve_project_target_dir(&project_path, &target, &ext_type)
-        .ok_or_else(|| "Target does not have a local directory for this type".to_string())?;
-
-    let dest_path = project_target_dir.join(item_id);
-
-    if enable {
-        create_link(&item_vault_path, &dest_path)?;
-        Ok(LinkStatus::Linked)
-    } else {
-        remove_link(&dest_path)?;
-        Ok(LinkStatus::Unlinked)
-    }
+    Ok(affected_count)
 }

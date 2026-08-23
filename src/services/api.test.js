@@ -33,4 +33,23 @@ describe("API Service Layer", () => {
     const resUnlink = await api.toggleGlobalItem("test-skill", "skill", "claude", false);
     expect(resUnlink).toBe("unlinked");
   });
+
+  it("returns default marketplaces and catalog in browser mode", async () => {
+    const marketplaces = await api.getMarketplaces();
+    expect(marketplaces).toBeInstanceOf(Array);
+    expect(marketplaces.length).toBeGreaterThanOrEqual(3);
+    expect(marketplaces.some((m) => m.id === "claude-plugins-official")).toBe(true);
+
+    const catalog = await api.getMarketplaceCatalog();
+    expect(catalog).toBeInstanceOf(Array);
+    expect(catalog.length).toBeGreaterThanOrEqual(5);
+    expect(catalog.some((c) => c.extension_type === "plugin")).toBe(true);
+    expect(catalog.some((c) => c.extension_type === "skill")).toBe(true);
+  });
+
+  it("supports adding custom marketplace in browser mode", async () => {
+    const added = await api.addMarketplace("Custom Repo", "https://github.com/custom/repo", "Test description");
+    expect(added).toHaveProperty("id", "custom-repo");
+    expect(added).toHaveProperty("name", "Custom Repo");
+  });
 });

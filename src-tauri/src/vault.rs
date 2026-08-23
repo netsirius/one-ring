@@ -307,7 +307,7 @@ pub fn delete_item_from_vault(ext_type: &ExtensionType, item_id: &str) -> Result
     Ok(())
 }
 
-fn copy_dir_all_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+pub fn copy_dir_all_recursive(src: &Path, dst: &Path) -> Result<(), String> {
     fs::create_dir_all(dst).map_err(|e| e.to_string())?;
     for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -526,6 +526,105 @@ pub fn import_url_into_vault(
     Ok(name_slug)
 }
 
+pub fn import_local_folder(
+    source_path: &Path,
+    ext_type: &ExtensionType,
+    custom_name: Option<String>,
+) -> Result<String, String> {
+    if !source_path.exists() {
+        return Err(format!("Local path '{}' does not exist.", source_path.display()));
+    }
+
+    let raw_name = custom_name.unwrap_or_else(|| {
+        source_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string()
+    });
+    let name_slug = raw_name.trim().to_lowercase().replace(' ', "-");
+
+    let vault_dir = get_vault_dir(ext_type);
+    let _ = fs::create_dir_all(&vault_dir);
+    let target_dir = vault_dir.join(&name_slug);
+
+    if target_dir.exists() {
+        return Err(format!("Item '{}' already exists in vault.", name_slug));
+    }
+
+    if source_path.is_dir() {
+        copy_dir_all_recursive(source_path, &target_dir)
+            .map_err(|e| format!("Failed to copy local folder to vault: {}", e))?;
+    } else {
+        fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
+        let dest_filename = match ext_type {
+            ExtensionType::Skill => "SKILL.md",
+            ExtensionType::Agent => "AGENT.md",
+            ExtensionType::Plugin => "plugin.json",
+            ExtensionType::Command => "COMMAND.md",
+            ExtensionType::Rule => "RULE.md",
+        };
+        fs::copy(source_path, target_dir.join(dest_filename))
+            .map_err(|e| format!("Failed to copy file to vault: {}", e))?;
+    }
+
+    Ok(name_slug)
+}
+
+pub fn import_raw_file_url(
+    url: &str,
+    ext_type: &ExtensionType,
+    custom_name: Option<String>,
+) -> Result<String, String> {
+    let output = Command::new("curl")
+        .args(["-fsSL", url])
+        .output()
+        .map_err(|e| format!("Failed to fetch URL: {}", e))?;
+
+    if !output.status.success() {
+        return Err("Failed to download raw file content from URL.".to_string());
+    }
+
+    let content = String::from_utf8_lossy(&output.stdout).to_string();
+    if content.trim().is_empty() {
+        return Err("Downloaded file content was empty.".to_string());
+    }
+
+    let inferred_name = custom_name.unwrap_or_else(|| {
+        url.split('/')
+            .last()
+            .unwrap_or("imported-extension")
+            .replace(".md", "")
+            .replace(".json", "")
+            .replace(".mdc", "")
+            .to_string()
+    });
+    let name_slug = inferred_name.trim().to_lowercase().replace(' ', "-");
+
+    let vault_dir = get_vault_dir(ext_type);
+    let _ = fs::create_dir_all(&vault_dir);
+    let target_dir = vault_dir.join(&name_slug);
+
+    if target_dir.exists() {
+        return Err(format!("Item '{}' already exists in vault.", name_slug));
+    }
+
+    fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
+
+    let filename = match ext_type {
+        ExtensionType::Skill => "SKILL.md",
+        ExtensionType::Agent => "AGENT.md",
+        ExtensionType::Plugin => "plugin.json",
+        ExtensionType::Command => "COMMAND.md",
+        ExtensionType::Rule => "RULE.md",
+    };
+
+    fs::write(target_dir.join(filename), content)
+        .map_err(|e| format!("Failed to save imported file: {}", e))?;
+
+    Ok(name_slug)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -585,5 +684,24 @@ mod tests {
         let (repo4, sub4, _) = parse_import_input("vercel-labs/skills");
         assert_eq!(repo4, "https://github.com/vercel-labs/skills");
         assert_eq!(sub4, None);
+    }
+
+    #[test]
+    fn test_import_local_folder() {
+        let temp_src = std::env::temp_dir().join(format!("one_ring_src_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_src);
+        fs::create_dir_all(&temp_src).unwrap();
+
+        let skill_file = temp_src.join("SKILL.md");
+        fs::write(&skill_file, "---\nname: Local Skill\ndescription: Test\n---\n# Content").unwrap();
+
+        let result = import_local_folder(&temp_src, &ExtensionType::Skill, Some("my-local-skill".to_string()));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "my-local-skill");
+
+        // Clean up imported folder
+        let imported = get_vault_dir(&ExtensionType::Skill).join("my-local-skill");
+        let _ = fs::remove_dir_all(&imported);
+        let _ = fs::remove_dir_all(&temp_src);
     }
 }

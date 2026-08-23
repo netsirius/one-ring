@@ -158,6 +158,13 @@ export const api = {
     }
   },
 
+  async syncProjectToTarget(projectPath, targetAgent, enable) {
+    if (isTauri && invoke) {
+      return await invoke("sync_project_to_target", { projectPath, targetAgent, enable });
+    }
+    return 1;
+  },
+
   async getItemContent(itemId, extType = "skill") {
     if (isTauri && invoke) {
       return await invoke("get_item_content", { itemId, extType });
@@ -218,6 +225,196 @@ export const api = {
   async importItem(url, extType = "skill", customName = null) {
     if (isTauri && invoke) {
       return await invoke("import_item", { url, extType, customName });
+    }
+  },
+
+  async importLocalFolder(path, extType = "skill", customName = null) {
+    if (isTauri && invoke) {
+      return await invoke("import_local_folder", { path, extType, customName });
+    }
+  },
+
+  async importRawUrl(url, extType = "skill", customName = null) {
+    if (isTauri && invoke) {
+      return await invoke("import_raw_url", { url, extType, customName });
+    }
+  },
+
+  async getMarketplaces() {
+    if (isTauri && invoke) {
+      return await invoke("get_marketplaces");
+    }
+    return [
+      {
+        id: "claude-plugins-official",
+        name: "Claude Code Official",
+        url: "https://github.com/anthropics/claude-plugins",
+        description: "Official Anthropic Claude Code plugins, skills, and MCP connectors",
+        default_marketplace: true,
+      },
+      {
+        id: "ecc",
+        name: "Everything Claude Code (ECC)",
+        url: "https://github.com/everything-claude-code/ecc",
+        description: "Comprehensive catalog of skills, agents, commands, and rules",
+        default_marketplace: true,
+      },
+      {
+        id: "gemini-plugins",
+        name: "Google Antigravity & Gemini",
+        url: "https://github.com/google-gemini/antigravity-plugins",
+        description: "Antigravity plugins, DevTools, MCP adapters, and autonomous agent capabilities",
+        default_marketplace: true,
+      },
+      {
+        id: "agent-skills",
+        name: "Universal Agent Skills Standard",
+        url: "https://github.com/vercel-labs/skills",
+        description: "Universal multi-agent skill registry and workflows standard",
+        default_marketplace: true,
+      },
+      {
+        id: "caveman",
+        name: "Caveman Agent Ecosystem",
+        url: "https://github.com/caveman/claude-plugins",
+        description: "Specialized developer skills, subagents, and slash commands",
+        default_marketplace: true,
+      },
+    ];
+  },
+
+  async addMarketplace(name, url, description) {
+    if (isTauri && invoke) {
+      return await invoke("add_marketplace", { name, url, description });
+    }
+    return { id: name.toLowerCase().replace(/\s+/g, "-"), name, url, description, default_marketplace: false };
+  },
+
+  async removeMarketplace(id) {
+    if (isTauri && invoke) {
+      return await invoke("remove_marketplace", { id });
+    }
+  },
+
+  async getMarketplaceCatalog() {
+    if (isTauri && invoke) {
+      return await invoke("get_marketplace_catalog");
+    }
+    return [
+      {
+        id: "chrome-devtools-plugin",
+        name: "Chrome DevTools Plugin",
+        extension_type: "plugin",
+        description: "Full Chrome DevTools integration with DOM inspection, console logs, network tracing, and a11y auditing.",
+        source_url: "https://github.com/anthropics/claude-plugins",
+        marketplace_id: "claude-plugins-official",
+        version: "2.1.0",
+        author: "Anthropic & Community",
+        tags: ["devtools", "chrome", "plugin", "mcp"],
+        is_installed: true,
+      },
+      {
+        id: "frontend-design",
+        name: "Frontend Design Heuristics",
+        extension_type: "skill",
+        description: "Distinctive, production-grade visual design and UI heuristics avoiding generic AI aesthetics.",
+        source_url: "https://github.com/vercel-labs/skills/tree/main/skills/frontend-design",
+        marketplace_id: "agent-skills",
+        version: "1.4.0",
+        author: "Vercel Labs",
+        tags: ["frontend", "design", "css", "skill"],
+        is_installed: true,
+      },
+      {
+        id: "ui-ux-pro-max",
+        name: "UI/UX Pro Max Intelligence",
+        extension_type: "skill",
+        description: "Comprehensive UI intelligence with 50 styles, 21 color palettes, typography tokens, and responsive layouts.",
+        source_url: "https://github.com/vercel-labs/skills/tree/main/skills/ui-ux-pro-max",
+        marketplace_id: "agent-skills",
+        version: "3.0.0",
+        author: "One Ring",
+        tags: ["ui", "ux", "tokens", "design"],
+        is_installed: true,
+      },
+      {
+        id: "ponytail-audit",
+        name: "Ponytail Code Audit",
+        extension_type: "skill",
+        description: "Deep codebase complexity auditor that detects speculative abstractions, dead code, and over-engineering.",
+        source_url: "https://github.com/google-gemini/antigravity-plugins/tree/main/skills/ponytail-audit",
+        marketplace_id: "gemini-plugins",
+        version: "1.1.2",
+        author: "Antigravity Core",
+        tags: ["audit", "refactor", "clean-code"],
+        is_installed: true,
+      },
+      {
+        id: "github-pr-reviewer",
+        name: "GitHub PR Reviewer Agent",
+        extension_type: "agent",
+        description: "Autonomous code review agent providing structured architectural feedback, diff analysis, and security reviews.",
+        source_url: "https://github.com/anthropics/claude-plugins/tree/main/agents/github-pr-reviewer",
+        marketplace_id: "claude-plugins-official",
+        version: "1.0.4",
+        author: "Anthropic",
+        tags: ["github", "code-review", "agent"],
+        is_installed: false,
+      },
+      {
+        id: "sql-optimizer",
+        name: "SQL & Query Optimizer",
+        extension_type: "skill",
+        description: "PostgreSQL, MySQL, and SQLite query planner analyzer with index optimization and performance benchmarks.",
+        source_url: "https://github.com/vercel-labs/skills/tree/main/skills/sql-optimizer",
+        marketplace_id: "agent-skills",
+        version: "2.0.1",
+        author: "Data Systems Group",
+        tags: ["sql", "database", "performance"],
+        is_installed: false,
+      },
+      {
+        id: "react-19-standards",
+        name: "React 19 & Next.js Standards",
+        extension_type: "rule",
+        description: "Strict Cursor/Claude rule set for modern React 19 Server Components, actions, and Suspense patterns.",
+        source_url: "https://github.com/vercel-labs/skills/tree/main/rules/react-19",
+        marketplace_id: "agent-skills",
+        version: "2.0.0",
+        author: "React Core",
+        tags: ["react", "nextjs", "rule"],
+        is_installed: false,
+      },
+      {
+        id: "slash-generate-tests",
+        name: "Slash Command: /generate-tests",
+        extension_type: "command",
+        description: "Universal slash command for generating unit and integration test suites with edge case coverage.",
+        source_url: "https://github.com/anthropics/claude-plugins/tree/main/commands/generate-tests",
+        marketplace_id: "claude-plugins-official",
+        version: "1.2.0",
+        author: "Testing WG",
+        tags: ["command", "testing", "vitest", "jest"],
+        is_installed: false,
+      },
+      {
+        id: "firebase",
+        name: "Firebase Suite Connector",
+        extension_type: "plugin",
+        description: "Google Cloud & Firebase MCP integration for auth, firestore, and cloud functions.",
+        source_url: "https://github.com/google-gemini/antigravity-plugins/tree/main/plugins/firebase",
+        marketplace_id: "gemini-plugins",
+        version: "1.0.0",
+        author: "Google Cloud",
+        tags: ["firebase", "gcp", "plugin"],
+        is_installed: false,
+      },
+    ];
+  },
+
+  async installMarketplaceItem(itemId, marketplaceId, extType = "plugin") {
+    if (isTauri && invoke) {
+      return await invoke("install_marketplace_item", { itemId, marketplaceId, extType });
     }
   },
 

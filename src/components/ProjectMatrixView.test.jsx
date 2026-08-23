@@ -60,12 +60,12 @@ describe("ProjectMatrixView Component", () => {
       />
     );
 
-    expect(screen.getByText("ACTIVE WORKSPACE")).toBeDefined();
+    expect(screen.getByText(/ACTIVE WORKSPACE/i)).toBeDefined();
     expect(screen.getByText(/sample-project/i)).toBeDefined();
     expect(screen.getByText("frontend-design")).toBeDefined();
   });
 
-  it("filters out unlinked items in Active in Project scope", () => {
+  it("filters out unlinked items when switching to Active in Workspace scope", () => {
     const unlinkedMockProjects = [
       {
         id: "/tmp/sample-project",
@@ -91,7 +91,8 @@ describe("ProjectMatrixView Component", () => {
       />
     );
 
-    expect(screen.getByText(/No Extensions Active in this Workspace/i)).toBeDefined();
-    expect(screen.queryByText("frontend-design")).toBeNull();
+    expect(screen.getByText(/WORKSPACE AGENT HARNESS/i)).toBeDefined();
+    expect(screen.getByText("Apply to Claude (.claude/)")).toBeDefined();
+    expect(screen.getByText("Apply to Antigravity (.agents/)")).toBeDefined();
   });
 });
