@@ -1,8 +1,21 @@
 use crate::adapters::{get_known_targets, get_vault_dir, resolve_project_target_dir};
 use crate::models::{DoctorIssue, ExtensionType, LinkStatus};
 use std::fs;
-use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
+
+#[cfg(unix)]
+fn os_symlink(original: &Path, link: &Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(original, link)
+}
+
+#[cfg(windows)]
+fn os_symlink(original: &Path, link: &Path) -> std::io::Result<()> {
+    if original.is_dir() {
+        std::os::windows::fs::symlink_dir(original, link)
+    } else {
+        std::os::windows::fs::symlink_file(original, link)
+    }
+}
 
 pub fn check_link_status(vault_path: &Path, target_dest_path: &Path) -> LinkStatus {
     match fs::symlink_metadata(target_dest_path) {
@@ -61,7 +74,7 @@ pub fn create_link(vault_path: &Path, target_dest_path: &Path) -> Result<(), Str
         }
     }
 
-    symlink(vault_path, target_dest_path)
+    os_symlink(vault_path, target_dest_path)
         .map_err(|e| format!("Failed to create symlink from {} to {}: {}", vault_path.display(), target_dest_path.display(), e))?;
 
     Ok(())
