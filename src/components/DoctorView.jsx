@@ -369,6 +369,10 @@ export default function DoctorView({
                       >
                         {issue.issue_type === "broken_symlink"
                           ? "BROKEN LINK"
+                          : issue.issue_type === "inert_claude_symlink"
+                          ? "INERT CLAUDE LINK"
+                          : issue.issue_type === "missing_marketplace"
+                          ? "MISSING MARKETPLACE"
                           : "UNMANAGED COPY"}
                       </span>
 
@@ -433,6 +437,10 @@ export default function DoctorView({
                     <span>
                       {issue.issue_type === "unmanaged_copy"
                         ? "Adopt to Vault"
+                        : issue.issue_type === "inert_claude_symlink"
+                        ? "Migrate to Settings"
+                        : issue.issue_type === "missing_marketplace"
+                        ? "Generate Marketplace"
                         : "Repair Link"}
                     </span>
                   </button>

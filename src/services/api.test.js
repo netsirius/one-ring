@@ -52,4 +52,10 @@ describe("API Service Layer", () => {
     expect(added).toHaveProperty("id", "custom-repo");
     expect(added).toHaveProperty("name", "Custom Repo");
   });
+
+  it("supports syncing all vault manifests in browser mode", async () => {
+    const count = await api.syncAllVaultManifests();
+    expect(typeof count).toBe("number");
+    expect(count).toBeGreaterThan(0);
+  });
 });

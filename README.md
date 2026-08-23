@@ -8,7 +8,7 @@
 
 **A unified, minimalist desktop control panel for AI agent skills, plugins, custom agents, CLI commands, and prompt rules across multiple AI coding environments.**
 
-[![Release](https://img.shields.io/badge/Release-v1.1.0-orange?style=flat-square)](https://github.com/netsirius/one-ring/releases)
+[![Release](https://img.shields.io/badge/Release-v1.2.0-orange?style=flat-square)](https://github.com/netsirius/one-ring/releases)
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2.11-FFC131?style=flat-square&logo=tauri&logoColor=black)](https://v2.tauri.app/)
 [![Rust](https://img.shields.io/badge/Rust-1.77%2B-DEA584?style=flat-square&logo=rust&logoColor=black)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)

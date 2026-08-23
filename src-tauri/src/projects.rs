@@ -1,5 +1,5 @@
 use crate::adapters::{get_known_targets, get_projects_file, get_vault_dir, resolve_project_target_dir};
-use crate::models::{ExtensionType, ProjectItemStatus, ProjectWorkspace};
+use crate::models::{ExtensionType, LinkStatus, ProjectItemStatus, ProjectWorkspace};
 use crate::symlink::{check_link_status, create_link, remove_link};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -61,20 +61,32 @@ pub fn get_saved_projects() -> Vec<ProjectWorkspace> {
 
                         // Check status across ALL agent targets (claude, gemini, agents, cursor, codex)
                         for target in &targets {
-                            if let Some(project_target_dir) = resolve_project_target_dir(&path, target, ext_type) {
-                                let target_dest = project_target_dir.join(&item_name);
-                                let status = check_link_status(&v_path, &target_dest);
-
-                                let key = format!("{}:{}:{}", item_name, ext_type.as_str(), target.id);
-                                if seen_keys.insert(key) {
-                                    item_statuses.push(ProjectItemStatus {
-                                        item_id: item_name.clone(),
-                                        extension_type: ext_type.clone(),
-                                        status,
-                                        target_agent: target.id.clone(),
-                                        path: target_dest.to_string_lossy().to_string(),
-                                    });
+                            let status = if target.id == "claude" && *ext_type == ExtensionType::Plugin {
+                                if crate::adapters::is_claude_plugin_enabled(&item_name, Some(&path)) {
+                                    LinkStatus::Linked
+                                } else {
+                                    LinkStatus::Unlinked
                                 }
+                            } else if let Some(project_target_dir) = resolve_project_target_dir(&path, target, ext_type) {
+                                let target_dest = project_target_dir.join(&item_name);
+                                check_link_status(&v_path, &target_dest)
+                            } else {
+                                LinkStatus::Incompatible
+                            };
+
+                            let target_dest_str = resolve_project_target_dir(&path, target, ext_type)
+                                .map(|d| d.join(&item_name).to_string_lossy().to_string())
+                                .unwrap_or_default();
+
+                            let key = format!("{}:{}:{}", item_name, ext_type.as_str(), target.id);
+                            if seen_keys.insert(key) {
+                                item_statuses.push(ProjectItemStatus {
+                                    item_id: item_name.clone(),
+                                    extension_type: ext_type.clone(),
+                                    status,
+                                    target_agent: target.id.clone(),
+                                    path: target_dest_str,
+                                });
                             }
                         }
                     }
@@ -216,7 +228,11 @@ pub fn sync_project_to_target(
                     continue;
                 }
 
-                if let Some(dest_dir) = resolve_project_target_dir(&p_path, target, ext_type) {
+                if target_agent_id == "claude" && *ext_type == ExtensionType::Plugin {
+                    if crate::adapters::set_claude_plugin_enabled(&item_name, Some(&p_path), enable).is_ok() {
+                        affected_count += 1;
+                    }
+                } else if let Some(dest_dir) = resolve_project_target_dir(&p_path, target, ext_type) {
                     let dest_path = dest_dir.join(&item_name);
                     if enable {
                         if create_link(&v_path, &dest_path).is_ok() {

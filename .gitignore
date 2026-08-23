@@ -25,6 +25,9 @@ Thumbs.db
 
 # Local runtime & locks
 .agents/
+.claude/
+.cursor/
+.codex/
 skills-lock.json
 .env
 .env.*

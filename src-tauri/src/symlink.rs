@@ -202,42 +202,62 @@ pub fn scan_diagnostics(project_paths: &[PathBuf]) -> Vec<DoctorIssue> {
                             let expected_vault_path = get_vault_dir(ext_type).join(&file_name);
                             let status = check_link_status(&expected_vault_path, &entry_path);
 
-                            match status {
-                                LinkStatus::Broken => {
-                                    issues.push(DoctorIssue {
-                                        id: format!("broken_global_{}_{}_{}", target.id, ext_type.as_str(), file_name),
-                                        title: format!("Broken {}: {}", ext_type.as_str(), file_name),
-                                        description: format!("Global symlink in {} ({}) points to a non-existent target.", target.name, ext_type.as_str()),
-                                        severity: "error".to_string(),
-                                        issue_type: "broken_symlink".to_string(),
-                                        extension_type: ext_type.clone(),
-                                        target_path: entry_path.to_string_lossy().to_string(),
-                                        vault_path: if expected_vault_path.exists() {
-                                            Some(expected_vault_path.to_string_lossy().to_string())
-                                        } else {
-                                            None
-                                        },
-                                        item_name: Some(file_name),
-                                        target_agent: Some(target.id.clone()),
-                                        can_auto_fix: true,
-                                    });
+                            if target.id == "claude" && *ext_type == ExtensionType::Plugin && (status == LinkStatus::Linked || status == LinkStatus::Broken) {
+                                issues.push(DoctorIssue {
+                                    id: format!("inert_claude_global_{}", file_name),
+                                    title: format!("Inert Claude Plugin: {}", file_name),
+                                    description: "Symlink in ~/.claude/plugins/ is not loaded by Claude Code. Auto-fix will remove it and configure the plugin via Claude settings.".to_string(),
+                                    severity: "warning".to_string(),
+                                    issue_type: "inert_claude_symlink".to_string(),
+                                    extension_type: ExtensionType::Plugin,
+                                    target_path: entry_path.to_string_lossy().to_string(),
+                                    vault_path: if expected_vault_path.exists() {
+                                        Some(expected_vault_path.to_string_lossy().to_string())
+                                    } else {
+                                        None
+                                    },
+                                    item_name: Some(file_name.clone()),
+                                    target_agent: Some("claude".to_string()),
+                                    can_auto_fix: true,
+                                });
+                            } else {
+                                match status {
+                                    LinkStatus::Broken => {
+                                        issues.push(DoctorIssue {
+                                            id: format!("broken_global_{}_{}_{}", target.id, ext_type.as_str(), file_name),
+                                            title: format!("Broken {}: {}", ext_type.as_str(), file_name),
+                                            description: format!("Global symlink in {} ({}) points to a non-existent target.", target.name, ext_type.as_str()),
+                                            severity: "error".to_string(),
+                                            issue_type: "broken_symlink".to_string(),
+                                            extension_type: ext_type.clone(),
+                                            target_path: entry_path.to_string_lossy().to_string(),
+                                            vault_path: if expected_vault_path.exists() {
+                                                Some(expected_vault_path.to_string_lossy().to_string())
+                                            } else {
+                                                None
+                                            },
+                                            item_name: Some(file_name),
+                                            target_agent: Some(target.id.clone()),
+                                            can_auto_fix: true,
+                                        });
+                                    }
+                                    LinkStatus::UnmanagedCopy => {
+                                        issues.push(DoctorIssue {
+                                            id: format!("unmanaged_global_{}_{}_{}", target.id, ext_type.as_str(), file_name),
+                                            title: format!("Unmanaged {}: {}", ext_type.as_str(), file_name),
+                                            description: format!("A physical directory exists in {} without being managed by One Ring.", target.name),
+                                            severity: "warning".to_string(),
+                                            issue_type: "unmanaged_copy".to_string(),
+                                            extension_type: ext_type.clone(),
+                                            target_path: entry_path.to_string_lossy().to_string(),
+                                            vault_path: Some(expected_vault_path.to_string_lossy().to_string()),
+                                            item_name: Some(file_name),
+                                            target_agent: Some(target.id.clone()),
+                                            can_auto_fix: true,
+                                        });
+                                    }
+                                    _ => {}
                                 }
-                                LinkStatus::UnmanagedCopy => {
-                                    issues.push(DoctorIssue {
-                                        id: format!("unmanaged_global_{}_{}_{}", target.id, ext_type.as_str(), file_name),
-                                        title: format!("Unmanaged {}: {}", ext_type.as_str(), file_name),
-                                        description: format!("A physical directory exists in {} without being managed by One Ring.", target.name),
-                                        severity: "warning".to_string(),
-                                        issue_type: "unmanaged_copy".to_string(),
-                                        extension_type: ext_type.clone(),
-                                        target_path: entry_path.to_string_lossy().to_string(),
-                                        vault_path: Some(expected_vault_path.to_string_lossy().to_string()),
-                                        item_name: Some(file_name),
-                                        target_agent: Some(target.id.clone()),
-                                        can_auto_fix: true,
-                                    });
-                                }
-                                _ => {}
                             }
                         }
                     }
@@ -264,7 +284,25 @@ pub fn scan_diagnostics(project_paths: &[PathBuf]) -> Vec<DoctorIssue> {
                                 let expected_vault_path = get_vault_dir(ext_type).join(&file_name);
                                 let status = check_link_status(&expected_vault_path, &entry_path);
 
-                                if status == LinkStatus::Broken {
+                                if target.id == "claude" && *ext_type == ExtensionType::Plugin && (status == LinkStatus::Linked || status == LinkStatus::Broken) {
+                                    issues.push(DoctorIssue {
+                                        id: format!("inert_claude_proj_{}_{}", project_path.display(), file_name),
+                                        title: format!("Inert Claude Project Plugin: {}", file_name),
+                                        description: format!("Project symlink in {}/.claude/plugins/ is not loaded by Claude Code. Auto-fix will configure it in project settings.json.", project_path.display()),
+                                        severity: "warning".to_string(),
+                                        issue_type: "inert_claude_symlink".to_string(),
+                                        extension_type: ExtensionType::Plugin,
+                                        target_path: entry_path.to_string_lossy().to_string(),
+                                        vault_path: if expected_vault_path.exists() {
+                                            Some(expected_vault_path.to_string_lossy().to_string())
+                                        } else {
+                                            None
+                                        },
+                                        item_name: Some(file_name.clone()),
+                                        target_agent: Some("claude".to_string()),
+                                        can_auto_fix: true,
+                                    });
+                                } else if status == LinkStatus::Broken {
                                     issues.push(DoctorIssue {
                                         id: format!("broken_proj_{}_{}_{}_{}", project_path.display(), target.id, ext_type.as_str(), file_name),
                                         title: format!("Broken Project Symlink: {}", file_name),
@@ -289,6 +327,25 @@ pub fn scan_diagnostics(project_paths: &[PathBuf]) -> Vec<DoctorIssue> {
                 }
             }
         }
+    }
+
+    // 3. Check Vault Marketplace Manifest
+    let vault_root = crate::adapters::get_vault_root_dir();
+    let mp_file = vault_root.join(".claude-plugin").join("marketplace.json");
+    if !mp_file.exists() {
+        issues.push(DoctorIssue {
+            id: "missing_vault_marketplace".to_string(),
+            title: "Missing Claude Marketplace Manifest".to_string(),
+            description: "The vault does not have .claude-plugin/marketplace.json for Claude Code. Auto-fix will generate it.".to_string(),
+            severity: "error".to_string(),
+            issue_type: "missing_marketplace".to_string(),
+            extension_type: ExtensionType::Plugin,
+            target_path: mp_file.to_string_lossy().to_string(),
+            vault_path: Some(vault_root.to_string_lossy().to_string()),
+            item_name: Some("marketplace.json".to_string()),
+            target_agent: Some("claude".to_string()),
+            can_auto_fix: true,
+        });
     }
 
     issues

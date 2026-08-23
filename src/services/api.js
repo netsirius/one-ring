@@ -477,5 +477,12 @@ export const api = {
     if (isTauri && invoke) {
       return await invoke("remove_item_from_project", { projectPath, extType, itemId, agentId });
     }
+  },
+
+  async syncAllVaultManifests() {
+    if (isTauri && invoke) {
+      return await invoke("sync_all_vault_manifests");
+    }
+    return 14;
   }
 };

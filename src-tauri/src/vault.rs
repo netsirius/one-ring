@@ -25,6 +25,137 @@ pub fn ensure_vault_structure() -> Result<PathBuf, String> {
     Ok(root)
 }
 
+pub fn sync_vault_manifests() -> Result<usize, String> {
+    let _ = ensure_vault_structure()?;
+    let plugins_dir = get_vault_dir(&ExtensionType::Plugin);
+    let mut marketplace_plugins = Vec::new();
+    let mut count = 0;
+
+    if plugins_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&plugins_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let dir_name = entry.file_name().to_string_lossy().to_string();
+
+                if dir_name.starts_with('.') || !path.is_dir() {
+                    continue;
+                }
+
+                let claude_plugin_dir = path.join(".claude-plugin");
+                let claude_plugin_json = claude_plugin_dir.join("plugin.json");
+                let root_plugin_json = path.join("plugin.json");
+
+                let mut manifest_val: serde_json::Value = if claude_plugin_json.exists() {
+                    let content = fs::read_to_string(&claude_plugin_json).unwrap_or_else(|_| "{}".to_string());
+                    serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+                } else if root_plugin_json.exists() {
+                    let content = fs::read_to_string(&root_plugin_json).unwrap_or_else(|_| "{}".to_string());
+                    serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+                } else {
+                    serde_json::json!({})
+                };
+
+                if !manifest_val.is_object() {
+                    manifest_val = serde_json::json!({});
+                }
+
+                let manifest_obj = manifest_val.as_object_mut().unwrap();
+
+                // Ensure name
+                if !manifest_obj.contains_key("name") || manifest_obj["name"].as_str().map(|s| s.is_empty()).unwrap_or(true) {
+                    manifest_obj.insert("name".to_string(), serde_json::Value::String(dir_name.clone()));
+                }
+
+                // Ensure version
+                if !manifest_obj.contains_key("version") || manifest_obj["version"].as_str().map(|s| s.is_empty()).unwrap_or(true) {
+                    manifest_obj.insert("version".to_string(), serde_json::Value::String("1.0.0".to_string()));
+                }
+
+                // Ensure description
+                if !manifest_obj.contains_key("description") || manifest_obj["description"].as_str().map(|s| s.is_empty()).unwrap_or(true) {
+                    let (name, desc, _, _) = parse_item_metadata(&path, &ExtensionType::Plugin);
+                    let final_desc = if !desc.is_empty() { desc } else { format!("{} plugin", name) };
+                    manifest_obj.insert("description".to_string(), serde_json::Value::String(final_desc));
+                }
+
+                // Special handling for LSP plugins
+                if dir_name == "rust-analyzer-lsp" && !manifest_obj.contains_key("lspServers") {
+                    manifest_obj.insert(
+                        "lspServers".to_string(),
+                        serde_json::json!({
+                            "rust-analyzer": {
+                                "command": "rust-analyzer",
+                                "args": [],
+                                "extensionToLanguage": {
+                                    ".rs": "rust"
+                                }
+                            }
+                        }),
+                    );
+                } else if dir_name == "typescript-lsp" && !manifest_obj.contains_key("lspServers") {
+                    manifest_obj.insert(
+                        "lspServers".to_string(),
+                        serde_json::json!({
+                            "typescript": {
+                                "command": "typescript-language-server",
+                                "args": ["--stdio"],
+                                "extensionToLanguage": {
+                                    ".ts": "typescript",
+                                    ".tsx": "typescriptreact",
+                                    ".js": "javascript",
+                                    ".jsx": "javascriptreact",
+                                    ".mts": "typescript",
+                                    ".cts": "typescript",
+                                    ".mjs": "javascript",
+                                    ".cjs": "javascript"
+                                }
+                            }
+                        }),
+                    );
+                }
+
+                // Write both .claude-plugin/plugin.json and root plugin.json
+                let _ = fs::create_dir_all(&claude_plugin_dir);
+                if let Ok(formatted) = serde_json::to_string_pretty(&manifest_val) {
+                    let _ = fs::write(&claude_plugin_json, &formatted);
+                    let _ = fs::write(&root_plugin_json, &formatted);
+                }
+
+                marketplace_plugins.push(serde_json::json!({
+                    "name": dir_name,
+                    "source": format!("./plugins/{}", dir_name)
+                }));
+                count += 1;
+            }
+        }
+    }
+
+    marketplace_plugins.sort_by(|a, b| {
+        let na = a.get("name").and_then(|s| s.as_str()).unwrap_or("");
+        let nb = b.get("name").and_then(|s| s.as_str()).unwrap_or("");
+        na.cmp(nb)
+    });
+
+    let vault_root = get_vault_root_dir();
+    let claude_vault_dir = vault_root.join(".claude-plugin");
+    fs::create_dir_all(&claude_vault_dir).map_err(|e| e.to_string())?;
+
+    let marketplace_manifest = serde_json::json!({
+        "name": "one-ring-vault",
+        "owner": {
+            "name": "Hector Santos"
+        },
+        "description": "One Ring Local Extension Vault",
+        "plugins": marketplace_plugins
+    });
+
+    let mp_path = claude_vault_dir.join("marketplace.json");
+    let formatted_mp = serde_json::to_string_pretty(&marketplace_manifest).map_err(|e| e.to_string())?;
+    fs::write(mp_path, formatted_mp).map_err(|e| format!("Failed to write marketplace.json: {}", e))?;
+
+    Ok(count)
+}
+
 pub fn list_vault_items() -> Result<Vec<VaultItem>, String> {
     let _ = ensure_vault_structure()?;
     let mut items = Vec::new();
@@ -62,7 +193,17 @@ pub fn list_vault_items() -> Result<Vec<VaultItem>, String> {
                     if is_supported {
                         supported_agents.push(target.id.clone());
 
-                        if let Some(target_global_dir_str) =
+                        if target.id == "claude" && *ext_type == ExtensionType::Plugin {
+                            let is_enabled = crate::adapters::is_claude_plugin_enabled(&file_name, None);
+                            global_status.insert(
+                                target.id.clone(),
+                                if is_enabled {
+                                    LinkStatus::Linked
+                                } else {
+                                    LinkStatus::Unlinked
+                                },
+                            );
+                        } else if let Some(target_global_dir_str) =
                             target.type_global_dirs.get(ext_type.as_str())
                         {
                             let target_dest = PathBuf::from(target_global_dir_str).join(&file_name);
@@ -109,17 +250,26 @@ pub fn parse_item_metadata(
     let mut description = String::new();
     let mut tags = vec![ext_type.as_str().to_string()];
 
-    // Case 1: Plugin with plugin.json
+    // Case 1: Plugin with plugin.json or .claude-plugin/plugin.json
     if item_path.is_dir() {
-        let plugin_json_path = item_path.join("plugin.json");
-        if plugin_json_path.exists() {
-            if let Ok(content) = fs::read_to_string(&plugin_json_path) {
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(n) = v.get("name").and_then(|n| n.as_str()) {
-                        name = n.to_string();
-                    }
-                    if let Some(d) = v.get("description").and_then(|d| d.as_str()) {
-                        description = d.to_string();
+        let candidates = [
+            item_path.join("plugin.json"),
+            item_path.join(".claude-plugin").join("plugin.json"),
+        ];
+        for plugin_json_path in &candidates {
+            if plugin_json_path.exists() {
+                if let Ok(content) = fs::read_to_string(plugin_json_path) {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(n) = v.get("name").and_then(|n| n.as_str()) {
+                            if name.is_empty() {
+                                name = n.to_string();
+                            }
+                        }
+                        if let Some(d) = v.get("description").and_then(|d| d.as_str()) {
+                            if description.is_empty() {
+                                description = d.to_string();
+                            }
+                        }
                     }
                 }
             }
@@ -279,6 +429,13 @@ pub fn create_new_vault_item(
     fs::write(&doc_path, final_content)
         .map_err(|e| format!("Failed to write {}: {}", filename, e))?;
 
+    if *ext_type == ExtensionType::Plugin {
+        let claude_plugin_dir = item_dir.join(".claude-plugin");
+        let _ = fs::create_dir_all(&claude_plugin_dir);
+        let _ = fs::copy(&doc_path, claude_plugin_dir.join("plugin.json"));
+        let _ = sync_vault_manifests();
+    }
+
     Ok(item_dir)
 }
 
@@ -298,10 +455,18 @@ pub fn delete_item_from_vault(ext_type: &ExtensionType, item_id: &str) -> Result
         }
     }
 
+    if *ext_type == ExtensionType::Plugin {
+        let _ = crate::adapters::set_claude_plugin_enabled(item_id, None, false);
+    }
+
     if item_path.is_dir() {
         fs::remove_dir_all(&item_path).map_err(|e| format!("Failed to delete directory: {}", e))?;
     } else {
         fs::remove_file(&item_path).map_err(|e| format!("Failed to delete file: {}", e))?;
+    }
+
+    if *ext_type == ExtensionType::Plugin {
+        let _ = sync_vault_manifests();
     }
 
     Ok(())
@@ -523,6 +688,9 @@ pub fn import_url_into_vault(
     }
 
     let _ = fs::remove_dir_all(&temp_dir);
+    if *ext_type == ExtensionType::Plugin {
+        let _ = sync_vault_manifests();
+    }
     Ok(name_slug)
 }
 
@@ -566,6 +734,10 @@ pub fn import_local_folder(
         };
         fs::copy(source_path, target_dir.join(dest_filename))
             .map_err(|e| format!("Failed to copy file to vault: {}", e))?;
+    }
+
+    if *ext_type == ExtensionType::Plugin {
+        let _ = sync_vault_manifests();
     }
 
     Ok(name_slug)
@@ -621,6 +793,10 @@ pub fn import_raw_file_url(
 
     fs::write(target_dir.join(filename), content)
         .map_err(|e| format!("Failed to save imported file: {}", e))?;
+
+    if *ext_type == ExtensionType::Plugin {
+        let _ = sync_vault_manifests();
+    }
 
     Ok(name_slug)
 }
@@ -703,5 +879,15 @@ mod tests {
         let imported = get_vault_dir(&ExtensionType::Skill).join("my-local-skill");
         let _ = fs::remove_dir_all(&imported);
         let _ = fs::remove_dir_all(&temp_src);
+    }
+
+    #[test]
+    fn test_sync_vault_manifests() {
+        let res = sync_vault_manifests();
+        assert!(res.is_ok());
+
+        let vault_root = get_vault_root_dir();
+        let mp_file = vault_root.join(".claude-plugin").join("marketplace.json");
+        assert!(mp_file.exists());
     }
 }

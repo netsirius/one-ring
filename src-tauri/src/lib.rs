@@ -70,6 +70,11 @@ fn toggle_global_item(item_id: String, ext_type: String, agent_id: String, enabl
     let target = get_target_by_id(&agent_id)
         .ok_or_else(|| format!("Target agent '{}' not recognized.", agent_id))?;
 
+    if agent_id == "claude" && t == ExtensionType::Plugin {
+        adapters::set_claude_plugin_enabled(&item_id, None, enable)?;
+        return Ok(if enable { LinkStatus::Linked } else { LinkStatus::Unlinked });
+    }
+
     let global_dir_str = target.type_global_dirs.get(t.as_str())
         .ok_or_else(|| format!("Agent '{}' does not support {} extensions.", target.name, t.as_str()))?;
 
@@ -99,6 +104,11 @@ fn toggle_project_item(project_path: String, ext_type: String, item_id: String, 
         .or_else(|| get_target_by_id("agents"))
         .ok_or_else(|| format!("Target agent '{}' not recognized.", agent_id))?;
 
+    if agent_id == "claude" && t == ExtensionType::Plugin {
+        adapters::set_claude_plugin_enabled(&item_id, Some(&p_path), enable)?;
+        return Ok(if enable { LinkStatus::Linked } else { LinkStatus::Unlinked });
+    }
+
     let project_target_dir = adapters::resolve_project_target_dir(&p_path, &target, &t)
         .ok_or_else(|| format!("Cannot resolve project directory for {}", target.name))?;
 
@@ -126,6 +136,10 @@ fn remove_item_from_project(project_path: String, ext_type: String, item_id: Str
     let target = get_target_by_id(&a_id)
         .or_else(|| get_target_by_id("agents"))
         .ok_or_else(|| "Target agent not recognized".to_string())?;
+
+    if a_id == "claude" && t == ExtensionType::Plugin {
+        let _ = adapters::set_claude_plugin_enabled(&item_id, Some(&p_path), false);
+    }
 
     if let Some(project_target_dir) = adapters::resolve_project_target_dir(&p_path, &target, &t) {
         let target_dest_path = project_target_dir.join(&item_id);
@@ -300,6 +314,11 @@ fn run_doctor_diagnostics() -> Vec<DoctorIssue> {
 }
 
 #[tauri::command]
+fn sync_all_vault_manifests() -> Result<usize, String> {
+    vault::sync_vault_manifests()
+}
+
+#[tauri::command]
 fn fix_doctor_issue(target_path: String, issue_type: String, ext_type: Option<String>, vault_path: Option<String>, item_name: Option<String>) -> Result<(), String> {
     let t_path = PathBuf::from(&target_path);
     let t = ext_type.map(|s| parse_ext_type(&s)).unwrap_or(ExtensionType::Skill);
@@ -320,6 +339,25 @@ fn fix_doctor_issue(target_path: String, issue_type: String, ext_type: Option<St
                 t_path.file_name().unwrap_or_default().to_string_lossy().to_string()
             });
             symlink::adopt_unmanaged_typed(&t_path, &t, &name)?;
+            Ok(())
+        }
+        "inert_claude_symlink" => {
+            let _ = symlink::remove_link(&t_path);
+            let name = item_name.unwrap_or_else(|| {
+                t_path.file_name().unwrap_or_default().to_string_lossy().to_string()
+            });
+            let is_proj = t_path.to_string_lossy().contains("/.claude/plugins/")
+                && !t_path.starts_with(adapters::get_home_dir().join(".claude"));
+            let proj_path = if is_proj {
+                t_path.ancestors().find(|p| p.join(".claude").exists())
+            } else {
+                None
+            };
+            adapters::set_claude_plugin_enabled(&name, proj_path, true)?;
+            Ok(())
+        }
+        "missing_marketplace" => {
+            vault::sync_vault_manifests()?;
             Ok(())
         }
         _ => Err("Unknown issue type".to_string()),
@@ -480,7 +518,8 @@ pub fn run() {
             install_marketplace_item,
             import_local_folder,
             import_raw_url,
-            sync_project_to_target
+            sync_project_to_target,
+            sync_all_vault_manifests
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
