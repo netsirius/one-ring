@@ -43,7 +43,13 @@ export default function App() {
   });
   const [viewMode, setViewMode] = useState("grid"); // "grid" | "table"
   const [searchQuery, setSearchQuery] = useState("");
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("modal") === "marketplace";
+    } catch {
+      return false;
+    }
+  });
   const [inspectingItem, setInspectingItem] = useState(null);
 
   // Modal deletion / quarantine config: { isOpen, item, mode: "trash" | "permanent" | "empty_trash" }
@@ -55,7 +61,13 @@ export default function App() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get("theme") || "dark";
+    } catch {
+      return "dark";
+    }
+  });
   const [toasts, setToasts] = useState([]);
 
   const showToast = useCallback((message, icon = "check") => {

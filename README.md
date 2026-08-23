@@ -22,7 +22,7 @@
 
 ## ⚡ The Problem
 
-AI coding environments and agent harnesses are multiplying fast. Every assistant uses its own isolated extension directory:
+AI coding environments and agent harnesses are multiplying fast. Every assistant uses its own isolated configuration directory:
 - **Anthropic Claude Code** (`~/.claude/skills/`, `~/.claude/plugins/`, `~/.claude/commands/`, `~/.claude/rules/`)
 - **Google Antigravity & Gemini CLI** (`~/.gemini/config/skills/`, `plugins/`, `rules/`, `commands/`, `agents/`)
 - **Universal `.agents` Standard** (`.agents/skills/`, `.agents/rules/`, `.agents/plugins/`, `.agents/commands/`)
@@ -47,44 +47,68 @@ Developers end up with **scattered duplicate files**, **out-of-sync edits**, bro
 
 ---
 
-## 📸 Core Features & Views
+## 📸 Interface & Core Views
 
 ### 1. Browse Marketplaces & 1-Click Installer
-Explore curated registries or connect custom GitHub repositories and package sources:
-- **🏛 Claude Code Official Marketplace**: Core developer tools (`typescript-lsp`, `rust-analyzer-lsp`, `skill-creator`, etc.).
-- **📦 Everything Claude Code (ECC)**: Production plugins, skills, and agents (`claude-code-setup`, `claude-md-management`, `tdd-workflows`).
-- **⚡ Google Antigravity & Gemini Plugins**: Multi-agent orchestration, chrome devtools, datacloud telemetry.
-- **🌐 Agent Skills Standard**: Universal community skills catalog (`frontend-design`, `a11y-debugging`, `modern-web-guidance`).
-- **🪨 Caveman & Custom Registries**: Community prompt rules, custom Git repos, and local folders.
+Explore curated registries (Claude Official Plugins, Everything Claude Code, Google Antigravity Plugins, Agent Skills, Caveman) or connect any custom GitHub repository:
+
+<div align="center">
+  <img src="./docs/screenshots/marketplace-view.png" alt="Marketplaces Browser and Installer View" width="96%" />
+</div>
 
 ---
 
 ### 2. Vault Library (Single Source of Truth)
-Manage your complete catalog of skills, plugins, agents, commands, and rules. Toggle global agent compatibility with interactive minimalist switches or inspect full markdown source code in the slide-over inspector.
+Manage your complete catalog of skills, plugins, agents, commands, and rules. Toggle global agent compatibility with interactive minimalist switches or inspect full markdown source code in the slide-over inspector:
+
+<div align="center">
+  <img src="./docs/screenshots/vault-view.png" alt="Vault Library View" width="96%" />
+</div>
 
 ---
 
 ### 3. Project Workspace Multi-Agent Harnesses
-Configure any local repository with granular per-agent control:
-- **Dense Matrix Switchboard**: View 20+ extensions simultaneously in a high-density, low-profile matrix (~36px per row) without endless scrolling.
-- **Per-Agent Target Switches**: Toggle links for `Claude Code` (`.claude/`), `Antigravity` (`.agents/`), `Cursor AI` (`.cursor/`), or `OpenAI Codex` (`.codex/`).
-- **1-Click Fast Sync**: Instantly replicate all Vault skills into `.claude/` or `.agents/` with a single tap.
-- **Real-Time Path Badges**: Inspect exact relative destination symlinks (e.g. `• .claude/plugins/claude-code-setup`).
+Configure any local codebase with granular per-agent control. Use the **Dense Matrix Switchboard** (~36px per row) to view and toggle 20+ extensions simultaneously across `Claude Code` (`.claude/`), `Antigravity` (`.agents/`), `Cursor AI` (`.cursor/`), and `OpenAI Codex` (`.codex/`) without scrolling:
+
+<div align="center">
+  <img src="./docs/screenshots/workspaces-view.png" alt="Project Workspaces and Dense Matrix View" width="96%" />
+</div>
 
 ---
 
 ### 4. Global Cross-Agent Switchboard
-A matrix grid for mass-activating extensions across multiple agent CLIs (Claude, Antigravity, Universal `.agents`, Cursor, Codex) in a single click.
+A matrix grid for mass-activating extensions across multiple agent CLIs (Claude, Antigravity, Universal `.agents`, Cursor, Codex) in a single click:
+
+<div align="center">
+  <img src="./docs/screenshots/switchboard-view.png" alt="Global Switchboard View" width="96%" />
+</div>
 
 ---
 
 ### 5. Symlink Doctor & Diagnostics
-Continuous integrity scanner that finds broken symbolic links and unmanaged copy divergence across your filesystem. Convert rogue copies into managed Vault symlinks with one click.
+Continuous integrity scanner that detects broken symbolic links and unmanaged copy divergence across your filesystem. Convert rogue copies into managed Vault symlinks with one click:
+
+<div align="center">
+  <img src="./docs/screenshots/doctor-view.png" alt="Symlink Doctor Diagnostics View" width="96%" />
+</div>
 
 ---
 
 ### 6. Safe 2-Stage Quarantine Trash
-Accidental deletion protection: items are staged in `~/.one-ring/trash/` with complete path metadata, enabling instant 1-click restoration before permanent disk purge.
+Accidental deletion protection: items are safely staged in `~/.one-ring/trash/` with metadata, enabling instant 1-click restoration before permanent disk purge:
+
+<div align="center">
+  <img src="./docs/screenshots/trash-view.png" alt="Trash and Quarantine View" width="96%" />
+</div>
+
+---
+
+### 7. Engineered Light & Dark Mode
+High-contrast theme parity tailored for developer setups in bright environments:
+
+<div align="center">
+  <img src="./docs/screenshots/light-mode.png" alt="One Ring Light Mode View" width="96%" />
+</div>
 
 ---
 
