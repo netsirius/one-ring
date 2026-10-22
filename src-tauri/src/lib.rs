@@ -256,26 +256,26 @@ fn adopt_all_unmanaged_skills() -> Result<usize, String> {
 }
 
 #[tauri::command]
-fn import_item(url: String, ext_type: String, custom_name: Option<String>) -> Result<String, String> {
+async fn import_item(url: String, ext_type: String, custom_name: Option<String>) -> Result<String, String> {
     let t = parse_ext_type(&ext_type);
     vault::import_url_into_vault(&url, &t, custom_name)
 }
 
 // Backward compat
 #[tauri::command]
-fn import_skill(url: String, custom_name: Option<String>) -> Result<String, String> {
-    import_item(url, "skill".to_string(), custom_name)
+async fn import_skill(url: String, custom_name: Option<String>) -> Result<String, String> {
+    import_item(url, "skill".to_string(), custom_name).await
 }
 
 #[tauri::command]
-fn import_local_folder(path: String, ext_type: String, custom_name: Option<String>) -> Result<String, String> {
+async fn import_local_folder(path: String, ext_type: String, custom_name: Option<String>) -> Result<String, String> {
     let t = parse_ext_type(&ext_type);
     let p = PathBuf::from(&path);
     vault::import_local_folder(&p, &t, custom_name)
 }
 
 #[tauri::command]
-fn import_raw_url(url: String, ext_type: String, custom_name: Option<String>) -> Result<String, String> {
+async fn import_raw_url(url: String, ext_type: String, custom_name: Option<String>) -> Result<String, String> {
     let t = parse_ext_type(&ext_type);
     vault::import_raw_file_url(&url, &t, custom_name)
 }
@@ -285,9 +285,15 @@ fn get_marketplaces() -> Vec<MarketplaceSource> {
     marketplaces::list_marketplaces()
 }
 
+// Marketplace commands that may hit git or scan large trees run as async commands so they stay off the main thread.
 #[tauri::command]
-fn add_marketplace(name: String, url: String, description: String) -> Result<MarketplaceSource, String> {
+async fn add_marketplace(name: String, url: String, description: String) -> Result<MarketplaceSource, String> {
     marketplaces::add_marketplace(&name, &url, &description)
+}
+
+#[tauri::command]
+async fn refresh_marketplace(id: String) -> Result<usize, String> {
+    marketplaces::refresh_marketplace(&id)
 }
 
 #[tauri::command]
@@ -296,12 +302,12 @@ fn remove_marketplace(id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_marketplace_catalog() -> Vec<MarketplaceCatalogItem> {
+async fn get_marketplace_catalog() -> Vec<MarketplaceCatalogItem> {
     marketplaces::get_marketplace_catalog()
 }
 
 #[tauri::command]
-fn install_marketplace_item(item_id: String, marketplace_id: String, ext_type: String) -> Result<String, String> {
+async fn install_marketplace_item(item_id: String, marketplace_id: String, ext_type: String) -> Result<String, String> {
     let t = parse_ext_type(&ext_type);
     marketplaces::install_marketplace_item(&item_id, &marketplace_id, &t)
 }
@@ -516,6 +522,7 @@ pub fn run() {
             remove_marketplace,
             get_marketplace_catalog,
             install_marketplace_item,
+            refresh_marketplace,
             import_local_folder,
             import_raw_url,
             sync_project_to_target,

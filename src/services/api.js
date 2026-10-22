@@ -248,37 +248,26 @@ export const api = {
       {
         id: "claude-plugins-official",
         name: "Claude Code Official",
-        url: "https://github.com/anthropics/claude-plugins",
-        description: "Official Anthropic Claude Code plugins, skills, and MCP connectors",
+        url: "https://github.com/anthropics/claude-plugins-official",
+        description: "Official Anthropic Claude Code plugins, development tools, and LSP connectors",
         default_marketplace: true,
+        synced: true,
       },
       {
         id: "ecc",
         name: "Everything Claude Code (ECC)",
-        url: "https://github.com/everything-claude-code/ecc",
-        description: "Comprehensive catalog of skills, agents, commands, and rules",
+        url: "https://github.com/affaan-m/everything-claude-code",
+        description: "Massive repository of skills, agents, commands, and rules for Claude Code",
         default_marketplace: true,
-      },
-      {
-        id: "gemini-plugins",
-        name: "Google Antigravity & Gemini",
-        url: "https://github.com/google-gemini/antigravity-plugins",
-        description: "Antigravity plugins, DevTools, MCP adapters, and autonomous agent capabilities",
-        default_marketplace: true,
+        synced: true,
       },
       {
         id: "agent-skills",
         name: "Universal Agent Skills Standard",
         url: "https://github.com/vercel-labs/skills",
-        description: "Universal multi-agent skill registry and workflows standard",
+        description: "Multi-agent skill workflows and system prompts standard",
         default_marketplace: true,
-      },
-      {
-        id: "caveman",
-        name: "Caveman Agent Ecosystem",
-        url: "https://github.com/caveman/claude-plugins",
-        description: "Specialized developer skills, subagents, and slash commands",
-        default_marketplace: true,
+        synced: true,
       },
     ];
   },
@@ -287,7 +276,14 @@ export const api = {
     if (isTauri && invoke) {
       return await invoke("add_marketplace", { name, url, description });
     }
-    return { id: name.toLowerCase().replace(/\s+/g, "-"), name, url, description, default_marketplace: false };
+    return { id: name.toLowerCase().replace(/\s+/g, "-"), name, url, description, default_marketplace: false, synced: true };
+  },
+
+  async refreshMarketplace(id) {
+    if (isTauri && invoke) {
+      return await invoke("refresh_marketplace", { id });
+    }
+    return 0;
   },
 
   async removeMarketplace(id) {

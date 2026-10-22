@@ -8,7 +8,7 @@
 
 **A unified, minimalist desktop control panel for AI agent skills, plugins, custom agents, CLI commands, and prompt rules across multiple AI coding environments.**
 
-[![Release](https://img.shields.io/badge/Release-v1.2.0-orange?style=flat-square)](https://github.com/netsirius/one-ring/releases)
+[![Release](https://img.shields.io/badge/Release-v1.3.0-orange?style=flat-square)](https://github.com/netsirius/one-ring/releases)
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2.11-FFC131?style=flat-square&logo=tauri&logoColor=black)](https://v2.tauri.app/)
 [![Rust](https://img.shields.io/badge/Rust-1.77%2B-DEA584?style=flat-square&logo=rust&logoColor=black)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
@@ -38,7 +38,7 @@ Developers end up with **scattered duplicate files**, **out-of-sync edits**, bro
 **One Ring** introduces a single source of truth. All your skills, plugins, agents, commands, and rules live once in a central isolated Vault (`~/.one-ring/vault/`) and are mapped into your global CLI targets or individual project repositories via **pure, lightning-fast OS-level symbolic links**.
 
 - 🚀 **Zero File Duplication**: Edit once in the Vault, and changes instantly reflect across all agents.
-- 🏛️ **Marketplace Browser & 1-Click Installer**: Discover and install extensions from official and community catalogs (Claude Code Official, Everything Claude Code, Google Antigravity, Agent Skills, Caveman, and custom sources).
+- 🏛️ **Marketplace Browser & 1-Click Installer**: Discover and install extensions from official and community catalogs (Claude Code Official, Everything Claude Code, Anthropic Agent Skills, Universal Agent Skills, local Gemini plugins, and any custom git repo or local folder). Marketplaces are shallow-cloned into `~/.one-ring/marketplaces/`, `.claude-plugin/marketplace.json` sources (relative, `url`, `github`, `git-subdir`, pinned `ref`/`sha`) are honored, and installs always copy real files.
 - 🎛️ **Multi-Agent Workspace Harnesses**: Target `.claude/`, `.agents/`, `.cursor/`, or `.codex/` per workspace with 1-click **Fast Sync** and a **Dense Matrix Switchboard** with zero scroll fatigue.
 - ⚡ **Native Speed & Zero Bloat**: Built with **Rust (Tauri v2)** and **React 19**. 100% in-memory native IPC with zero background daemons.
 - 🛡️ **2-Stage Quarantine Trash**: Quarantines deletions in `~/.one-ring/trash/` with 1-click instant rollback before permanent disk purge.

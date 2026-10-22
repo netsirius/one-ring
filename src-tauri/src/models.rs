@@ -156,6 +156,9 @@ pub struct MarketplaceSource {
     pub url: String,
     pub description: String,
     pub default_marketplace: bool,
+    /// True when the marketplace contents are available locally (local path or synced git cache).
+    #[serde(default)]
+    pub synced: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -170,6 +173,18 @@ pub struct MarketplaceCatalogItem {
     pub author: Option<String>,
     pub tags: Vec<String>,
     pub is_installed: bool,
+    /// Sub-directory inside `source_url` repository holding the item (git-subdir sources).
+    #[serde(default)]
+    pub source_subdir: Option<String>,
+    /// Git branch or tag to check out when cloning `source_url`.
+    #[serde(default)]
+    pub source_ref: Option<String>,
+    /// Exact commit to pin when cloning `source_url`.
+    #[serde(default)]
+    pub source_sha: Option<String>,
+    /// Human-readable component summary, e.g. ["3 skills", "1 agent", "MCP"].
+    #[serde(default)]
+    pub components: Vec<String>,
 }
 
 #[cfg(test)]

@@ -22,6 +22,8 @@ import {
   FileText,
   Boxes,
   HelpCircle,
+  RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { TYPE_CONFIG } from "./VaultView";
 import { api } from "../services/api";
@@ -139,6 +141,8 @@ export default function InstallExtensionModal({
   const [catalogSearch, setCatalogSearch] = useState("");
   const [selectedMarketplaceId, setSelectedMarketplaceId] = useState("all");
   const [installingCatalogId, setInstallingCatalogId] = useState(null);
+  const [syncingIds, setSyncingIds] = useState([]);
+  const [confirmRemoveId, setConfirmRemoveId] = useState(null);
 
   // Add custom marketplace form
   const [showAddMarketplace, setShowAddMarketplace] = useState(false);
@@ -170,7 +174,7 @@ export default function InstallExtensionModal({
     }
   }, [isOpen]);
 
-  const loadMarketplacesAndCatalog = async () => {
+  const loadMarketplacesAndCatalog = async ({ autoSync = true } = {}) => {
     try {
       const [mps, catalog] = await Promise.all([
         api.getMarketplaces(),
@@ -178,9 +182,35 @@ export default function InstallExtensionModal({
       ]);
       setMarketplaces(mps || []);
       setCatalogItems(catalog || []);
+      // Git marketplaces are fetched lazily: clone the ones that have never been synced.
+      const unsynced = (mps || []).filter((m) => !m.synced).map((m) => m.id);
+      if (autoSync && unsynced.length > 0) {
+        syncMarketplaces(unsynced);
+      }
     } catch (err) {
       console.error("Failed to load catalog:", err);
     }
+  };
+
+  const syncMarketplaces = async (ids) => {
+    setSyncingIds((prev) => [...new Set([...prev, ...ids])]);
+    const results = await Promise.allSettled(ids.map((id) => api.refreshMarketplace(id)));
+    const failed = ids.filter((_, i) => results[i].status === "rejected");
+    if (failed.length > 0) {
+      const reasons = results.filter((r) => r.status === "rejected").map((r) => r.reason?.toString());
+      setErrorMessage(`Failed to sync ${failed.join(", ")}: ${reasons.join(" | ")}`);
+    }
+    setSyncingIds((prev) => prev.filter((id) => !ids.includes(id)));
+    await loadMarketplacesAndCatalog({ autoSync: false });
+  };
+
+  const handleSyncClick = () => {
+    setErrorMessage("");
+    const ids =
+      selectedMarketplaceId === "all"
+        ? marketplaces.map((m) => m.id)
+        : [selectedMarketplaceId];
+    syncMarketplaces(ids);
   };
 
   // Esc key listener
@@ -194,14 +224,7 @@ export default function InstallExtensionModal({
 
   // Create a map of marketplace ID -> Display Name
   const marketplaceMap = useMemo(() => {
-    const map = {
-      all: "All Sources",
-      "claude-plugins-official": "Claude Code Official",
-      "ecc": "Everything Claude Code (ECC)",
-      "gemini-plugins": "Google Antigravity & Gemini",
-      "agent-skills": "Universal Agent Skills Standard",
-      "caveman": "Caveman Agent Ecosystem",
-    };
+    const map = { all: "All Sources" };
     for (const m of marketplaces) {
       map[m.id] = m.name;
     }
@@ -260,19 +283,44 @@ export default function InstallExtensionModal({
 
   // Handle Catalog 1-Click Install
   const handleInstallCatalogItem = async (item) => {
-    setInstallingCatalogId(item.id);
+    setInstallingCatalogId(`${item.marketplace_id}:${item.extension_type}:${item.id}`);
     setErrorMessage("");
     try {
       await api.installMarketplaceItem(item.id, item.marketplace_id, item.extension_type);
       if (onShowToast) onShowToast(`Installed ${item.name} into Vault`);
       // Update local state
+      // Vault entries are keyed by type + id, so every catalog entry with that pair is now installed.
       setCatalogItems((prev) =>
-        prev.map((c) => (c.id === item.id ? { ...c, is_installed: true } : c))
+        prev.map((c) =>
+          c.id === item.id && c.extension_type === item.extension_type ? { ...c, is_installed: true } : c
+        )
       );
     } catch (err) {
       setErrorMessage(err?.toString() || "Failed to install catalog item");
     } finally {
       setInstallingCatalogId(null);
+    }
+  };
+
+  const selectedMarketplace = marketplaces.find((m) => m.id === selectedMarketplaceId);
+  const canRemoveSelected = selectedMarketplace && !selectedMarketplace.default_marketplace;
+
+  // Two-step inline confirmation (no browser dialogs)
+  const handleRemoveMarketplace = async () => {
+    if (!selectedMarketplace) return;
+    if (confirmRemoveId !== selectedMarketplace.id) {
+      setConfirmRemoveId(selectedMarketplace.id);
+      return;
+    }
+    setConfirmRemoveId(null);
+    setErrorMessage("");
+    try {
+      await api.removeMarketplace(selectedMarketplace.id);
+      if (onShowToast) onShowToast(`Removed marketplace: ${selectedMarketplace.name}`);
+      setSelectedMarketplaceId("all");
+      loadMarketplacesAndCatalog({ autoSync: false });
+    } catch (err) {
+      setErrorMessage(err?.toString() || "Failed to remove marketplace");
     }
   };
 
@@ -290,7 +338,7 @@ export default function InstallExtensionModal({
       setNewMpName("");
       setNewMpUrl("");
       setNewMpDesc("");
-      loadMarketplacesAndCatalog();
+      loadMarketplacesAndCatalog({ autoSync: false });
     } catch (err) {
       setErrorMessage(err?.toString() || "Failed to add marketplace");
     } finally {
@@ -512,7 +560,10 @@ export default function InstallExtensionModal({
                     className="form-input"
                     style={{ height: "30px", fontSize: "0.76rem", padding: "2px 8px", flex: 1 }}
                     value={selectedMarketplaceId}
-                    onChange={(e) => handleMarketplaceChange(e.target.value)}
+                    onChange={(e) => {
+                      setConfirmRemoveId(null);
+                      handleMarketplaceChange(e.target.value);
+                    }}
                   >
                     <option value="all">All Sources ({catalogItems.length} items total)</option>
                     {marketplaces.map((m) => {
@@ -525,6 +576,36 @@ export default function InstallExtensionModal({
                     })}
                   </select>
                 </div>
+
+                {canRemoveSelected && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{
+                      height: "30px",
+                      padding: "0 10px",
+                      fontSize: "0.72rem",
+                      color: confirmRemoveId === selectedMarketplace.id ? "var(--color-broken)" : undefined,
+                    }}
+                    onClick={handleRemoveMarketplace}
+                    title="Unregister this custom marketplace and delete its cached clone"
+                  >
+                    <Trash2 size={12} />
+                    <span>{confirmRemoveId === selectedMarketplace.id ? "Confirm Remove" : "Remove"}</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ height: "30px", padding: "0 10px", fontSize: "0.72rem" }}
+                  onClick={handleSyncClick}
+                  disabled={syncingIds.length > 0}
+                  title="Fetch the latest catalog from the marketplace repositories"
+                >
+                  <RefreshCw size={12} />
+                  <span>{syncingIds.length > 0 ? "Syncing..." : "Sync"}</span>
+                </button>
 
                 <button
                   type="button"
@@ -593,7 +674,7 @@ export default function InstallExtensionModal({
                       style={{ padding: "3px 12px", fontSize: "0.72rem" }}
                       disabled={isSubmitting}
                     >
-                      {isSubmitting ? "Registering..." : "Register Marketplace"}
+                      {isSubmitting ? "Cloning repository..." : "Register Marketplace"}
                     </button>
                   </div>
                 </form>
@@ -722,13 +803,18 @@ export default function InstallExtensionModal({
                       fontSize: "0.82rem",
                     }}
                   >
-                    No extensions found matching your search or filters.
+                    {syncingIds.length > 0 &&
+                    (selectedMarketplaceId === "all" || syncingIds.includes(selectedMarketplaceId))
+                      ? "Syncing marketplace catalog..."
+                      : marketplaces.find((m) => m.id === selectedMarketplaceId && !m.synced)
+                      ? "This marketplace has not been synced yet. Click Sync to fetch it."
+                      : "No extensions found matching your search or filters."}
                   </div>
                 ) : (
                   filteredCatalog.map((item) => {
                     const config = TYPE_CONFIG[item.extension_type] || TYPE_CONFIG.skill;
                     const Icon = config.icon;
-                    const isInstalling = installingCatalogId === item.id;
+                    const isInstalling = installingCatalogId === `${item.marketplace_id}:${item.extension_type}:${item.id}`;
                     const sourceName = marketplaceMap[item.marketplace_id] || item.marketplace_id;
 
                     return (
@@ -805,6 +891,20 @@ export default function InstallExtensionModal({
                           >
                             {item.description}
                           </p>
+
+                          {item.components?.length > 0 && (
+                            <div
+                              style={{
+                                fontFamily: "var(--font-mono)",
+                                fontSize: "0.62rem",
+                                letterSpacing: "0.04em",
+                                color: "var(--text-muted)",
+                                marginBottom: "6px",
+                              }}
+                            >
+                              {item.components.join(" · ")}
+                            </div>
+                          )}
 
                           <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
                             {item.tags?.slice(0, 3).map((tag) => (

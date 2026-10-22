@@ -53,6 +53,11 @@ describe("API Service Layer", () => {
     expect(added).toHaveProperty("name", "Custom Repo");
   });
 
+  it("exposes marketplace refresh in browser mode", async () => {
+    const count = await api.refreshMarketplace("claude-plugins-official");
+    expect(typeof count).toBe("number");
+  });
+
   it("supports syncing all vault manifests in browser mode", async () => {
     const count = await api.syncAllVaultManifests();
     expect(typeof count).toBe("number");
